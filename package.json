@@ -10,14 +10,18 @@
     "test:comments": "playwright test tests/comments.spec.ts",
     "test:tags": "playwright test tests/tags.spec.ts",
     "test:profiles": "playwright test tests/profiles.spec.ts",
-    "report": "playwright show-report"
+    "report": "playwright show-report",
+    "allure:generate": "allure generate allure-results --clean -o allure-report",
+    "allure:open": "allure open allure-report",
+    "allure:serve": "allure serve allure-results"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
     "@playwright/test": "^1.60.0",
-    "@types/node": "^25.9.3"
+    "@types/node": "^25.9.3",
+    "allure-playwright": "^3.10.2"
   },
   "directories": {
     "test": "tests"

@@ -1,6 +1,7 @@
 import { test, expect, APIRequestContext } from '@playwright/test';
 import { ArticlesApi } from '../support/api/ArticlesApi';
 import { CommentsApi } from '../support/api/CommentsApi';
+import { Comment } from '../support/types';
 import { createAuthContext } from '../support/helpers';
 
 test.describe('Comments', () => {
@@ -54,22 +55,40 @@ test.describe('Comments', () => {
   });
 
   test('DELETE /api/articles/:slug/comments/:id — returns 401 without token', async ({ request }) => {
-    const { comment } = await commentsApi.create(articleSlug, 'Comment for auth delete test.');
+    let comment: Comment;
 
-    const { status } = await new CommentsApi(request).delete(articleSlug, comment.id);
-    expect(status).toBe(401);
+    await test.step('Create comment to attempt deleting', async () => {
+      const { comment: created } = await commentsApi.create(articleSlug, 'Comment for auth delete test.');
+      comment = created;
+    });
 
-    await commentsApi.delete(articleSlug, comment.id).catch(() => {});
+    await test.step('Attempt delete without token', async () => {
+      const { status } = await new CommentsApi(request).delete(articleSlug, comment.id);
+      expect(status).toBe(401);
+    });
+
+    await test.step('Cleanup: delete comment', async () => {
+      await commentsApi.delete(articleSlug, comment.id).catch(() => {});
+    });
   });
 
   test('DELETE /api/articles/:slug/comments/:id — deletes own comment', async () => {
-    const { comment } = await commentsApi.create(articleSlug, 'Comment to be deleted.');
+    let comment: Comment;
 
-    const { status } = await commentsApi.delete(articleSlug, comment.id);
-    expect(status).toBe(200);
+    await test.step('Create comment to delete', async () => {
+      const { comment: created } = await commentsApi.create(articleSlug, 'Comment to be deleted.');
+      comment = created;
+    });
 
-    const { comments } = await commentsApi.list(articleSlug);
-    expect(comments.find(c => c.id === comment.id)).toBeUndefined();
+    await test.step('Delete the comment', async () => {
+      const { status } = await commentsApi.delete(articleSlug, comment.id);
+      expect(status).toBe(200);
+    });
+
+    await test.step('Verify comment removed from list', async () => {
+      const { comments } = await commentsApi.list(articleSlug);
+      expect(comments.find(c => c.id === comment.id)).toBeUndefined();
+    });
   });
 
   test('POST /api/articles/:slug/comments — returns 422 when body is missing', async () => {

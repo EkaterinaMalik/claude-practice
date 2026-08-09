@@ -63,16 +63,21 @@ test.describe('Schema validation — Response shape', () => {
   test('GET /api/profiles/:username — profile matches ProfileSchema', async ({ request, playwright }) => {
     const id = uniqueId();
     const username = `u_${id}`;
-    const ctx = await playwright.request.newContext({
-      baseURL: API_BASE,
-      extraHTTPHeaders: { 'Content-Type': 'application/json' },
-    });
-    await new AuthApi(ctx).register({ username, email: generateEmail('sch', id), password: TEST_PASSWORD });
-    await ctx.dispose();
 
-    const { status, profile } = await new ProfilesApi(request).get(username);
-    expect(status).toBe(200);
-    ProfileSchema.parse(profile);
+    await test.step('Register a profile target user', async () => {
+      const ctx = await playwright.request.newContext({
+        baseURL: API_BASE,
+        extraHTTPHeaders: { 'Content-Type': 'application/json' },
+      });
+      await new AuthApi(ctx).register({ username, email: generateEmail('sch', id), password: TEST_PASSWORD });
+      await ctx.dispose();
+    });
+
+    await test.step('Fetch and validate profile', async () => {
+      const { status, profile } = await new ProfilesApi(request).get(username);
+      expect(status).toBe(200);
+      ProfileSchema.parse(profile);
+    });
   });
 
   test('GET /api/user — authenticated user matches UserSchema', async () => {
@@ -101,26 +106,41 @@ test.describe('Schema validation — Response shape', () => {
   test('POST /api/users/login — login response matches UserSchema', async ({ playwright }) => {
     const id = uniqueId();
     const email = generateEmail('lgn', id);
-    const ctx = await playwright.request.newContext({
-      baseURL: API_BASE,
-      extraHTTPHeaders: { 'Content-Type': 'application/json' },
-    });
-    const api = new AuthApi(ctx);
-    await api.register({ username: `u_${id}`, email, password: TEST_PASSWORD });
-    const { status, user } = await api.login({ email, password: TEST_PASSWORD });
-    await ctx.dispose();
+    let ctx: APIRequestContext;
+    let api: AuthApi;
 
-    expect(status).toBe(200);
-    UserSchema.parse(user);
+    await test.step('Register a user', async () => {
+      ctx = await playwright.request.newContext({
+        baseURL: API_BASE,
+        extraHTTPHeaders: { 'Content-Type': 'application/json' },
+      });
+      api = new AuthApi(ctx);
+      await api.register({ username: `u_${id}`, email, password: TEST_PASSWORD });
+    });
+
+    await test.step('Log in and validate response', async () => {
+      const { status, user } = await api.login({ email, password: TEST_PASSWORD });
+      expect(status).toBe(200);
+      UserSchema.parse(user);
+    });
+
+    await test.step('Cleanup: dispose context', async () => {
+      await ctx.dispose();
+    });
   });
 
   test('GET /api/articles/:slug/comments — each comment matches CommentSchema', async ({ request }) => {
-    await commentsApi.create(articleSlug, 'Comment for schema validation.');
-    const { status, comments } = await new CommentsApi(request).list(articleSlug);
-    expect(status).toBe(200);
-    for (const comment of comments) {
-      CommentSchema.parse(comment);
-    }
+    await test.step('Add a comment', async () => {
+      await commentsApi.create(articleSlug, 'Comment for schema validation.');
+    });
+
+    await test.step('Validate each comment in the list', async () => {
+      const { status, comments } = await new CommentsApi(request).list(articleSlug);
+      expect(status).toBe(200);
+      for (const comment of comments) {
+        CommentSchema.parse(comment);
+      }
+    });
   });
 
   test('POST /api/articles/:slug/comments — created comment matches CommentSchema', async () => {

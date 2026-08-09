@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, APIRequestContext } from '@playwright/test';
 import { ProfilesApi } from '../support/api/ProfilesApi';
 import { AuthApi } from '../support/api/AuthApi';
 import { createAuthContext, uniqueId, generateEmail, API_BASE, TEST_PASSWORD } from '../support/helpers';
@@ -36,31 +36,50 @@ test.describe('Profiles', () => {
   });
 
   test('POST /api/profiles/:username/follow — follows a user when authenticated', async ({ playwright }) => {
-    const targetUsername = await createTargetUser(playwright);
-    const authCtx = await createAuthContext(playwright);
-    const api = new ProfilesApi(authCtx);
+    let targetUsername: string;
+    let authCtx: APIRequestContext;
+    let api: ProfilesApi;
 
-    const { status, profile } = await api.follow(targetUsername);
-    expect(status).toBe(200);
-    expect(profile.following).toBe(true);
-    expect(profile.username).toBe(targetUsername);
+    await test.step('Register target user and actor', async () => {
+      targetUsername = await createTargetUser(playwright);
+      authCtx = await createAuthContext(playwright);
+      api = new ProfilesApi(authCtx);
+    });
 
-    await api.unfollow(targetUsername);
-    await authCtx.dispose();
+    await test.step('Follow target user', async () => {
+      const { status, profile } = await api.follow(targetUsername);
+      expect(status).toBe(200);
+      expect(profile.following).toBe(true);
+      expect(profile.username).toBe(targetUsername);
+    });
+
+    await test.step('Cleanup: unfollow and dispose context', async () => {
+      await api.unfollow(targetUsername);
+      await authCtx.dispose();
+    });
   });
 
   test('DELETE /api/profiles/:username/follow — unfollows a user when authenticated', async ({ playwright }) => {
-    const targetUsername = await createTargetUser(playwright);
-    const authCtx = await createAuthContext(playwright);
-    const api = new ProfilesApi(authCtx);
+    let targetUsername: string;
+    let authCtx: APIRequestContext;
+    let api: ProfilesApi;
 
-    await api.follow(targetUsername);
+    await test.step('Register target user, actor, and follow', async () => {
+      targetUsername = await createTargetUser(playwright);
+      authCtx = await createAuthContext(playwright);
+      api = new ProfilesApi(authCtx);
+      await api.follow(targetUsername);
+    });
 
-    const { status, profile } = await api.unfollow(targetUsername);
-    expect(status).toBe(200);
-    expect(profile.following).toBe(false);
+    await test.step('Unfollow target user', async () => {
+      const { status, profile } = await api.unfollow(targetUsername);
+      expect(status).toBe(200);
+      expect(profile.following).toBe(false);
+    });
 
-    await authCtx.dispose();
+    await test.step('Cleanup: dispose context', async () => {
+      await authCtx.dispose();
+    });
   });
 
   test('POST /api/profiles/:username/follow — returns 401 without token', async ({ request }) => {

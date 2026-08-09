@@ -5,18 +5,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-npm test                        # run all 30 tests
+npm test                        # run all tests (writes HTML + Allure results, per config)
 npm run test:auth               # run a single suite
 npm run test:articles
 npm run test:comments
 npm run test:tags
 npm run test:profiles
-npm run report                  # open HTML report (must run tests first)
+npm run report                  # open Playwright's built-in HTML report (must run tests first)
 
-npx playwright test --reporter=list                  # no HTML report, console only
+npm run allure:generate         # build the Allure static report from allure-results/
+npm run allure:open             # open the generated Allure report in a browser
+npm run allure:serve            # generate + open in one step (temporary server)
+
 npx playwright test tests/articles.spec.ts           # run one file
 npx playwright test -g "creates a new article"       # run one test by title
 ```
+
+### Reporting
+
+Reporters are configured in `playwright.config.ts`: `html`, `list`, and `allure-playwright` (writes to `allure-results/`) all run together by default.
+
+**Gotcha:** passing `--reporter=<name>` on the command line (e.g. `--reporter=list`) *replaces* the entire `reporter` array from the config — it does not add to it. Doing this silently disables Allure result generation with no error. Omit `--reporter` to get all three configured reporters; only pass it when you deliberately want console-only output for a quick local check.
+
+`allure-results/` and `allure-report/` are gitignored — generate them locally or in CI as needed. Requires the `allure` CLI (or Java) to be installed to generate/view the report; result files themselves need no extra tooling to produce.
 
 ## Architecture
 
@@ -44,3 +55,54 @@ The project is being migrated toward a two-layer model:
 ### Auth pattern
 
 Tests that need an authenticated context register + login a new user in `beforeAll` or at the top of the test, then dispose the context in `afterAll`. There is no saved auth state. The helper lives inline in each spec file for now; the long-term target is a shared Playwright fixture in `support/fixtures.ts`.
+
+## Testing rules
+
+### Test independence
+Every test must create its own data and clean up with `.catch(() => {})` so cleanup failures never mask test failures. Never read data created by another test. `beforeAll` is only acceptable for a single shared read-only value (e.g. an article slug reused across comment tests in the same describe block). All tests must be safe to run in parallel (`fullyParallel: true`).
+
+### TypeScript interfaces as test data structure
+Define TypeScript interfaces for all API request/response shapes in `support/api/` (e.g. `CreateArticleInput`, `UpdateArticleInput`). Use these interfaces to type all test data — they serve as living documentation of the expected shape and give compile-time safety. When intentionally sending incomplete data to test server-side validation, use an explicit `as InterfaceType` cast to make the violation visible and deliberate:
+```typescript
+// Intentional: missing required field to verify 422
+await api.create({ description: 'No title', body: 'Some body.' } as CreateArticleInput);
+```
+
+### Known server bugs — use `test.fail()`
+When the server behaves incorrectly in a way we cannot fix (e.g. returning a raw database error instead of a structured 400), document it with `test.fail()` and a comment explaining the expected vs actual behavior. Do not silently skip or work around it — the failing test acts as a bug tracker entry that automatically resolves if the server is fixed.
+
+### Response time thresholds
+Set thresholds at approximately 3× the measured actual response time to avoid flakiness while still catching real regressions. Re-measure and adjust if the server or network environment changes significantly.
+
+### Group multi-phase tests with `test.step`
+When a test has more than one logical phase (setup, act, assert, verify persistence, cleanup), wrap each phase in `test.step('label', async () => { ... })`. This makes the HTML report show collapsible, individually-timed steps instead of one opaque block, so a failure points straight at the phase that broke.
+
+- **Apply it** to tests with 2+ distinct phases: e.g. create → update → verify, or setup owner/attacker → act → cleanup.
+- **Skip it** on true one-liners (a single API call + assert) — wrapping trivial tests in steps adds noise without adding clarity.
+- **Preserve full response objects across steps**, not just the field you happen to need right now (e.g. keep `let article: Article` instead of `let slug: string`). Later steps or future edits may need other fields, and it keeps the variable's meaning obvious.
+- No `page` fixture is needed for `test.step` in API tests — the callback is just `async () => {}` regardless of which fixture the outer test uses (`request`, `playwright`, or none).
+
+```typescript
+test('PUT /api/articles/:slug — updates all article attributes', async () => {
+  let created: Article;
+
+  await test.step('Create article to be updated', async () => {
+    const { article } = await api.create({ ... });
+    created = article;
+  });
+
+  await test.step('Update article attributes', async () => {
+    const { status, article } = await api.update(created.slug, updates);
+    expect(status).toBe(200);
+  });
+
+  await test.step('Verify changes persisted via a separate fetch', async () => {
+    const { article: fetched } = await api.getBySlug(created.slug);
+    expect(fetched.title).toBe(updates.title);
+  });
+
+  await test.step('Cleanup: delete the article', async () => {
+    await api.delete(created.slug).catch(() => {});
+  });
+});
+```

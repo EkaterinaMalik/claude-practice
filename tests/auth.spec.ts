@@ -66,22 +66,29 @@ test.describe('Authentication', () => {
   });
 
   test('GET /api/user — returns current user when authenticated', async ({ playwright }) => {
-    const { user: loggedIn } = await api.login({ email: registeredEmail, password });
-    const authCtx = await playwright.request.newContext({
-      baseURL: API_BASE,
-      extraHTTPHeaders: {
-        'Content-Type': 'application/json',
-        Authorization: `Token ${loggedIn!.token}`,
-      },
+    let authCtx: APIRequestContext;
+
+    await test.step('Log in to obtain token', async () => {
+      const { user: loggedIn } = await api.login({ email: registeredEmail, password });
+      authCtx = await playwright.request.newContext({
+        baseURL: API_BASE,
+        extraHTTPHeaders: {
+          'Content-Type': 'application/json',
+          Authorization: `Token ${loggedIn!.token}`,
+        },
+      });
     });
-    const authApi = new AuthApi(authCtx);
 
-    const { status, user } = await authApi.getCurrentUser();
-    expect(status).toBe(200);
-    expect(user!.email).toBe(registeredEmail);
-    expect(user!.token).toBeTruthy();
+    await test.step('Fetch current user with token', async () => {
+      const { status, user } = await new AuthApi(authCtx).getCurrentUser();
+      expect(status).toBe(200);
+      expect(user!.email).toBe(registeredEmail);
+      expect(user!.token).toBeTruthy();
+    });
 
-    await authCtx.dispose();
+    await test.step('Cleanup: dispose context', async () => {
+      await authCtx.dispose();
+    });
   });
 
   test('GET /api/user — returns 401 without token', async () => {
@@ -90,16 +97,26 @@ test.describe('Authentication', () => {
   });
 
   test('GET /api/user — returns 401 with malformed token', async ({ playwright }) => {
-    const badCtx = await playwright.request.newContext({
-      baseURL: API_BASE,
-      extraHTTPHeaders: {
-        'Content-Type': 'application/json',
-        Authorization: 'Token not-a-real-token',
-      },
+    let badCtx: APIRequestContext;
+
+    await test.step('Create context with malformed token', async () => {
+      badCtx = await playwright.request.newContext({
+        baseURL: API_BASE,
+        extraHTTPHeaders: {
+          'Content-Type': 'application/json',
+          Authorization: 'Token not-a-real-token',
+        },
+      });
     });
-    const { status } = await new AuthApi(badCtx).getCurrentUser();
-    expect(status).toBe(401);
-    await badCtx.dispose();
+
+    await test.step('Verify request is rejected', async () => {
+      const { status } = await new AuthApi(badCtx).getCurrentUser();
+      expect(status).toBe(401);
+    });
+
+    await test.step('Cleanup: dispose context', async () => {
+      await badCtx.dispose();
+    });
   });
 
   test('PUT /api/user — returns 401 without token', async () => {
@@ -108,28 +125,31 @@ test.describe('Authentication', () => {
   });
 
   test('PUT /api/user — updates all user attributes', async ({ playwright }) => {
-    // Create a dedicated user so updating email/password doesn't affect shared test state
-    const id = uniqueId();
-    const originalEmail = generateEmail('a', id);
-    const originalPassword = TEST_PASSWORD;
+    let authCtx: APIRequestContext;
 
-    const tmpCtx = await playwright.request.newContext({
-      baseURL: API_BASE,
-      extraHTTPHeaders: { 'Content-Type': 'application/json' },
-    });
-    const tmpApi = new AuthApi(tmpCtx);
-    await tmpApi.register({ username: `u_${id}`, email: originalEmail, password: originalPassword });
-    const { user: loggedIn } = await tmpApi.login({ email: originalEmail, password: originalPassword });
-    await tmpCtx.dispose();
+    await test.step('Register a dedicated user and log in', async () => {
+      // Dedicated user so updating email/password doesn't affect shared test state
+      const id = uniqueId();
+      const originalEmail = generateEmail('a', id);
+      const originalPassword = TEST_PASSWORD;
 
-    const authCtx = await playwright.request.newContext({
-      baseURL: API_BASE,
-      extraHTTPHeaders: {
-        'Content-Type': 'application/json',
-        Authorization: `Token ${loggedIn!.token}`,
-      },
+      const tmpCtx = await playwright.request.newContext({
+        baseURL: API_BASE,
+        extraHTTPHeaders: { 'Content-Type': 'application/json' },
+      });
+      const tmpApi = new AuthApi(tmpCtx);
+      await tmpApi.register({ username: `u_${id}`, email: originalEmail, password: originalPassword });
+      const { user: loggedIn } = await tmpApi.login({ email: originalEmail, password: originalPassword });
+      await tmpCtx.dispose();
+
+      authCtx = await playwright.request.newContext({
+        baseURL: API_BASE,
+        extraHTTPHeaders: {
+          'Content-Type': 'application/json',
+          Authorization: `Token ${loggedIn!.token}`,
+        },
+      });
     });
-    const authApi = new AuthApi(authCtx);
 
     const newId = uniqueId();
     const updates = {
@@ -140,33 +160,39 @@ test.describe('Authentication', () => {
       password: TEST_NEW_PASSWORD,
     };
 
-    //user! - user is not null and not undefined
-    const { status, user } = await authApi.updateCurrentUser(updates);
-    expect(status).toBe(200);
-    expect(user!.email).toBe(updates.email);
-    expect(user!.username).toBe(updates.username);
-    expect(user!.bio).toBe(updates.bio);
-    expect(user!.image).toBe(updates.image);
-
-    // Verify all non-password changes persisted via a separate fetch
-    const { user: fetched } = await authApi.getCurrentUser();
-    expect(fetched!.email).toBe(updates.email);
-    expect(fetched!.username).toBe(updates.username);
-    expect(fetched!.bio).toBe(updates.bio);
-    expect(fetched!.image).toBe(updates.image);
-
-    // Verify new password works by logging in with updated credentials
-    const verifyCtx = await playwright.request.newContext({
-      baseURL: API_BASE,
-      extraHTTPHeaders: { 'Content-Type': 'application/json' },
+    await test.step('Update all user attributes', async () => {
+      //user! - user is not null and not undefined
+      const { status, user } = await new AuthApi(authCtx).updateCurrentUser(updates);
+      expect(status).toBe(200);
+      expect(user!.email).toBe(updates.email);
+      expect(user!.username).toBe(updates.username);
+      expect(user!.bio).toBe(updates.bio);
+      expect(user!.image).toBe(updates.image);
     });
-    const { status: loginStatus } = await new AuthApi(verifyCtx).login({
-      email: updates.email,
-      password: updates.password,
-    });
-    expect(loginStatus).toBe(200);
-    await verifyCtx.dispose();
 
-    await authCtx.dispose();
+    await test.step('Verify non-password changes persisted via a separate fetch', async () => {
+      const { user: fetched } = await new AuthApi(authCtx).getCurrentUser();
+      expect(fetched!.email).toBe(updates.email);
+      expect(fetched!.username).toBe(updates.username);
+      expect(fetched!.bio).toBe(updates.bio);
+      expect(fetched!.image).toBe(updates.image);
+    });
+
+    await test.step('Verify new password works by logging in with updated credentials', async () => {
+      const verifyCtx = await playwright.request.newContext({
+        baseURL: API_BASE,
+        extraHTTPHeaders: { 'Content-Type': 'application/json' },
+      });
+      const { status: loginStatus } = await new AuthApi(verifyCtx).login({
+        email: updates.email,
+        password: updates.password,
+      });
+      expect(loginStatus).toBe(200);
+      await verifyCtx.dispose();
+    });
+
+    await test.step('Cleanup: dispose context', async () => {
+      await authCtx.dispose();
+    });
   });
 });
