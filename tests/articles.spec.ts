@@ -47,6 +47,32 @@ test.describe('Articles — Public endpoints', () => {
     }
   });
 
+// Destructure fixtures
+//  async ({ request, playwright })
+
+//======= the save as fixtures =======
+
+//  test('...', async (fixtures) => {
+//  const request = fixtures.request;
+//  const playwright = fixtures.playwright;
+////
+  // ...
+//});
+
+// 'request' = an anonymous API client, ready to use
+
+//!!!!! NO Need to create HTTP client use 'request' fixture which playwright has already created !!!!
+
+// request.post(...)
+// request.get(...)
+// .....
+// const response = await request.post('/api/articles', {
+//     data: {
+//       title: 'My article',
+//       description: 'Test article'
+//     }
+//   });
+
   test('GET /api/articles/:slug — returns a single article', async ({ request, playwright }) => {
     const authCtx = await createAuthContext(playwright);
     const authApi = new ArticlesApi(authCtx);
@@ -71,7 +97,9 @@ test.describe('Articles — Public endpoints', () => {
     });
 
     await test.step('Cleanup: delete article', async () => {
-      await authApi.delete(created.slug).catch(() => {});
+      await authApi.delete(created.slug).catch((error) => {
+        console.warn('Cleanup failed:', error);
+      });
       await authCtx.dispose();
     });
   });
@@ -136,7 +164,9 @@ test.describe('Articles — Auth protection', () => {
     });
 
     await test.step('Cleanup: delete article and dispose context', async () => {
-      await new ArticlesApi(authCtx).delete(article.slug).catch(() => {});
+      await new ArticlesApi(authCtx).delete(article.slug).catch((error) => {
+        console.warn('Cleanup failed:', error);
+      });
       await authCtx.dispose();
     });
   });
@@ -163,7 +193,9 @@ test.describe('Articles — Auth protection', () => {
     });
 
     await test.step('Cleanup: delete article and dispose contexts', async () => {
-      await new ArticlesApi(ownerCtx).delete(article.slug).catch(() => {});
+      await new ArticlesApi(ownerCtx).delete(article.slug).catch((error) => {
+        console.warn('Cleanup failed:', error);
+      });
       await ownerCtx.dispose();
       await otherCtx.dispose();
     });
@@ -191,7 +223,9 @@ test.describe('Articles — Auth protection', () => {
     });
 
     await test.step('Cleanup: delete article and dispose contexts', async () => {
-      await new ArticlesApi(ownerCtx).delete(article.slug).catch(() => {});
+      await new ArticlesApi(ownerCtx).delete(article.slug).catch((error) => {
+        console.warn('Cleanup failed:', error);
+      });
       await ownerCtx.dispose();
       await otherCtx.dispose();
     });
@@ -210,7 +244,9 @@ test.describe('Articles — Authenticated endpoints', () => {
 
   test.afterAll(async () => {
     if (createdSlug) {
-      await api.delete(createdSlug).catch(() => {});
+      await api.delete(createdSlug).catch((error) => {
+        console.warn('Cleanup failed:', error);
+      });
     }
     await authCtx.dispose();
   });
@@ -272,7 +308,9 @@ test.describe('Articles — Authenticated endpoints', () => {
     });
 
     await test.step('Cleanup: delete the article', async () => {
-      await api.delete(updated.slug).catch(() => {});
+      await api.delete(updated.slug).catch((error) => {
+        console.warn('Cleanup failed:', error);
+      });
     });
   });
 
@@ -297,7 +335,9 @@ test.describe('Articles — Authenticated endpoints', () => {
 
     await test.step('Cleanup: unfavorite and delete article', async () => {
       await api.unfavorite(created.slug);
-      await api.delete(created.slug).catch(() => {});
+      await api.delete(created.slug).catch((error) => {
+        console.warn('Cleanup failed:', error);
+      });
     });
   });
 
@@ -322,7 +362,9 @@ test.describe('Articles — Authenticated endpoints', () => {
     });
 
     await test.step('Cleanup: delete article', async () => {
-      await api.delete(created.slug).catch(() => {});
+      await api.delete(created.slug).catch((error) => {
+        console.warn('Cleanup failed:', error);
+      });
     });
   });
 
@@ -408,7 +450,9 @@ test.describe('Articles — Authenticated endpoints', () => {
     });
 
     await test.step('Cleanup: delete article', async () => {
-      await api.delete(article.slug).catch(() => {});
+      await api.delete(article.slug).catch((error) => {
+        console.warn('Cleanup failed:', error);
+      });
     });
   });
 
@@ -431,7 +475,9 @@ test.describe('Articles — Authenticated endpoints', () => {
     });
 
     await test.step('Cleanup: delete article', async () => {
-      await api.delete(article.slug).catch(() => {});
+      await api.delete(article.slug).catch((error) => {
+        console.warn('Cleanup failed:', error);
+      });
     });
   });
 });

@@ -25,7 +25,9 @@ test.describe('Error responses — Shape and safety', () => {
 
   test.afterAll(async () => {
     if (articleSlug) {
-      await articlesApi.delete(articleSlug).catch(() => {});
+      await articlesApi.delete(articleSlug).catch((error) => {
+        console.warn('Cleanup failed:', error);
+      });
     }
     await authCtx.dispose();
   });

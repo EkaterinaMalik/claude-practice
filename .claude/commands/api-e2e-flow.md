@@ -24,7 +24,12 @@ Generate a full end-to-end flow test for the main resource in this API test proj
    12. **Verify main resource is gone** → assert 404
 
 3. Wrap all steps after actor login in a `try/finally` to ensure `actorCtx.dispose()` always runs.
-4. Use `.catch(() => {})` on all cleanup calls so cleanup failures never mask step failures.
+4. On all cleanup calls, catch and log the error rather than swallowing it silently — a bare `.catch(() => {})` looks identical to a healthy run in CI output and hides real leaked state:
+   ```typescript
+   await api.delete(article.slug).catch((error) => {
+     console.warn('Cleanup failed:', error);
+   });
+   ```
 5. Wrap each numbered phase in `test.step('label', async () => { ... })` instead of a plain comment — see "Group with test.step" below.
 
 ## Key patterns

@@ -26,7 +26,9 @@ test.describe('Comments', () => {
 
   test.afterAll(async () => {
     if (articleSlug) {
-      await articlesApi.delete(articleSlug).catch(() => {});
+      await articlesApi.delete(articleSlug).catch((error) => {
+        console.warn('Cleanup failed:', error);
+      });
     }
     await authCtx.dispose();
   });
@@ -68,7 +70,9 @@ test.describe('Comments', () => {
     });
 
     await test.step('Cleanup: delete comment', async () => {
-      await commentsApi.delete(articleSlug, comment.id).catch(() => {});
+      await commentsApi.delete(articleSlug, comment.id).catch((error) => {
+        console.warn('Cleanup failed:', error);
+      });
     });
   });
 

@@ -35,7 +35,9 @@ test.describe('Schema validation — Response shape', () => {
 
   test.afterAll(async () => {
     if (articleSlug) {
-      await articlesApi.delete(articleSlug).catch(() => {});
+      await articlesApi.delete(articleSlug).catch((error) => {
+        console.warn('Cleanup failed:', error);
+      });
     }
     await authCtx.dispose();
   });

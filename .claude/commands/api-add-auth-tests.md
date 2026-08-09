@@ -15,7 +15,7 @@ If no endpoint is given, review all write endpoints in the current suite and add
 
 ## Placement
 
-Add tests to an `Auth protection` describe block in the relevant spec file. Each test must be fully independent: create any needed resources inside the test and clean up with `.catch(() => {})`.
+Add tests to an `Auth protection` describe block in the relevant spec file. Each test must be fully independent: create any needed resources inside the test and clean up afterward. Log cleanup errors instead of swallowing them silently — see the pattern reference.
 
 The missing-token test is a single call + assert — leave it flat, no `test.step` needed. The cross-user 403 test has three distinct phases (owner setup, attacker attempt, cleanup) — wrap each in `test.step`, and keep the full created resource object in an outer-scope variable (e.g. `let article: Article`) rather than narrowing to just the slug.
 
@@ -45,7 +45,9 @@ test('PUT /api/articles/:slug — returns 403 when editing another user\'s artic
   });
 
   await test.step('Cleanup: delete article and dispose contexts', async () => {
-    await new ArticlesApi(ownerCtx).delete(article.slug).catch(() => {});
+    await new ArticlesApi(ownerCtx).delete(article.slug).catch((error) => {
+      console.warn('Cleanup failed:', error);
+    });
     await ownerCtx.dispose();
     await otherCtx.dispose();
   });

@@ -59,7 +59,14 @@ Tests that need an authenticated context register + login a new user in `beforeA
 ## Testing rules
 
 ### Test independence
-Every test must create its own data and clean up with `.catch(() => {})` so cleanup failures never mask test failures. Never read data created by another test. `beforeAll` is only acceptable for a single shared read-only value (e.g. an article slug reused across comment tests in the same describe block). All tests must be safe to run in parallel (`fullyParallel: true`).
+Every test must create its own data and clean up after itself so cleanup failures never mask test failures. Never read data created by another test. `beforeAll` is only acceptable for a single shared read-only value (e.g. an article slug reused across comment tests in the same describe block). All tests must be safe to run in parallel (`fullyParallel: true`).
+
+Cleanup calls must not fail silently. Catch the error and log it rather than swallowing it with a bare `.catch(() => {})` — a silent cleanup failure looks identical to a healthy test in CI output, and hides real problems (e.g. a resource that was never actually deleted, leaking state into later runs):
+```typescript
+await api.delete(article.slug).catch((error) => {
+  console.warn('Cleanup failed:', error);
+});
+```
 
 ### TypeScript interfaces as test data structure
 Define TypeScript interfaces for all API request/response shapes in `support/api/` (e.g. `CreateArticleInput`, `UpdateArticleInput`). Use these interfaces to type all test data — they serve as living documentation of the expected shape and give compile-time safety. When intentionally sending incomplete data to test server-side validation, use an explicit `as InterfaceType` cast to make the violation visible and deliberate:
