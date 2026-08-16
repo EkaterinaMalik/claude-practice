@@ -13,6 +13,7 @@ export default defineConfig({
     ['html'],
     ['list'],
     ['allure-playwright', { resultsDir: 'allure-results' }],
+    ['junit', { outputFile: 'junit-results/results.xml' }],
   ],
   use: {
     baseURL: process.env.API_BASE_URL,
