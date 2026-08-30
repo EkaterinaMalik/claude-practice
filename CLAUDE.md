@@ -23,9 +23,9 @@ npx playwright test -g "creates a new article"       # run one test by title
 
 ### Reporting
 
-Reporters are configured in `playwright.config.ts`: `html`, `list`, and `allure-playwright` (writes to `allure-results/`) all run together by default.
+Reporters are configured in `playwright.config.ts`: `html`, `list`, `allure-playwright` (writes to `allure-results/`), and `junit` (writes to `junit-results/results.xml`) all run together by default.
 
-**Gotcha:** passing `--reporter=<name>` on the command line (e.g. `--reporter=list`) *replaces* the entire `reporter` array from the config — it does not add to it. Doing this silently disables Allure result generation with no error. Omit `--reporter` to get all three configured reporters; only pass it when you deliberately want console-only output for a quick local check.
+**Gotcha:** passing `--reporter=<name>` on the command line (e.g. `--reporter=list`) *replaces* the entire `reporter` array from the config — it does not add to it. Doing this silently disables Allure result generation with no error. It also silently breaks CI: the GitHub Actions workflow's `dorny/test-reporter` step reads `junit-results/results.xml` to publish the pass/fail check run, and that step will fail (or show stale results) if the JUnit reporter didn't run. Omit `--reporter` to get all four configured reporters; only pass it when you deliberately want console-only output for a quick local check.
 
 `allure-results/` and `allure-report/` are gitignored — generate them locally or in CI as needed. Requires the `allure` CLI (or Java) to be installed to generate/view the report; result files themselves need no extra tooling to produce.
 
