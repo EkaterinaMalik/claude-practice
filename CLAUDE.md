@@ -27,7 +27,21 @@ Reporters are configured in `playwright.config.ts`: `html`, `list`, `allure-play
 
 **Gotcha:** passing `--reporter=<name>` on the command line (e.g. `--reporter=list`) *replaces* the entire `reporter` array from the config — it does not add to it. Doing this silently disables Allure result generation with no error. It also silently breaks CI: the GitHub Actions workflow's `dorny/test-reporter` step reads `junit-results/results.xml` to publish the pass/fail check run, and that step will fail (or show stale results) if the JUnit reporter didn't run. Omit `--reporter` to get all four configured reporters; only pass it when you deliberately want console-only output for a quick local check.
 
-`allure-results/` and `allure-report/` are gitignored — generate them locally or in CI as needed. Requires the `allure` CLI (or Java) to be installed to generate/view the report; result files themselves need no extra tooling to produce.
+`allure-results/` and `allure-report/` are gitignored — generate them locally or in CI as needed. Result files themselves need no extra tooling to produce; only generating/viewing the report needs the `allure` CLI.
+
+#### Viewing the report without a local Allure CLI
+
+The `allure:*` scripts need `allure` (and a JRE) on the host. To avoid that dependency, `docker-compose.yml` defines an `allure` service that runs a pinned Allure CLI in a container:
+
+```bash
+npm run allure:docker         # serve the report at http://localhost:5252
+npm run allure:docker:build   # write allure-report/ to the host, then exit
+```
+
+- **The CLI version is pinned to 2.36.0** in `docker/allure/Dockerfile`. `allure-playwright` is on 3.x but writes Allure 2-compatible results, so the 2.x CLI renders them correctly — this is the combination known to work here. Bump the `ALLURE_VERSION` build arg only after confirming the report still renders.
+- **`-h 0.0.0.0` is required** in the container's serve command. Allure's default binds to localhost *inside* the container, which the published host port cannot reach — the port looks open but every request hangs.
+- **The service runs as the host user** via `user: "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"`, which the npm scripts set from `id -u`/`id -g`. Without it the container writes `allure-report/` as root, and the next local `npm run allure:generate` (or a plain `rm -rf allure-report`) fails with permission errors. Keep the `DOCKER_UID`/`DOCKER_GID` prefix if you edit these scripts.
+- **The npm scripts `mkdir -p` the mounted directories first, deliberately.** Both are gitignored and often absent; Docker auto-creates a missing bind-mount source as a **root-owned** directory, after which `npm test` fails with permission errors trying to write `allure-results/`. Creating them as the host user first avoids that. Keep the `mkdir -p` if you edit these scripts.
 
 ## Architecture
 

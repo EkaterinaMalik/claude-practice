@@ -13,7 +13,9 @@
     "report": "playwright show-report",
     "allure:generate": "allure generate allure-results --clean -o allure-report",
     "allure:open": "allure open allure-report",
-    "allure:serve": "allure serve allure-results"
+    "allure:serve": "allure serve allure-results",
+    "allure:docker": "mkdir -p allure-results allure-report && DOCKER_UID=$(id -u) DOCKER_GID=$(id -g) docker compose up --build allure",
+    "allure:docker:build": "mkdir -p allure-results allure-report && DOCKER_UID=$(id -u) DOCKER_GID=$(id -g) docker compose run --rm --no-deps allure allure generate /work/allure-results --clean -o /work/allure-report"
   },
   "keywords": [],
   "author": "",

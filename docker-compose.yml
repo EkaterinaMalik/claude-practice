@@ -1,0 +1,17 @@
+services:
+  # View the Allure report without installing Java or the Allure CLI locally.
+  #   npm run allure:docker         -> serve at http://localhost:5252
+  #   npm run allure:docker:build   -> write allure-report/ to the host
+  allure:
+    build:
+      context: ./docker/allure
+    # Run as the invoking host user so files written to allure-report/ stay
+    # owned by that user instead of root. The npm scripts export these.
+    user: "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"
+    ports:
+      - "5252:5252"
+    volumes:
+      # Read-only: the container only ever renders results, never writes them.
+      - ./allure-results:/work/allure-results:ro
+      # Writable, for the `generate` override below.
+      - ./allure-report:/work/allure-report
