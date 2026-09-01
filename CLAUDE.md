@@ -29,6 +29,8 @@ Reporters are configured in `playwright.config.ts`: `html`, `list`, `allure-play
 
 `allure-results/` and `allure-report/` are gitignored — generate them locally or in CI as needed. Result files themselves need no extra tooling to produce; only generating/viewing the report needs the `allure` CLI.
 
+**Allure results accumulate.** `allure-playwright` appends to `allure-results/` and never clears it, so two runs leave every test in the report twice (the `--clean` in `allure:generate` cleans the *report* directory, not the results). A `pretest` script therefore does `rm -rf allure-results` before `npm test`. Note it only fires for `npm test` — the per-spec scripts (`test:auth` and friends) append to whatever is already there, which is usually what you want when iterating on one spec, but means the report mixes runs until the next full `npm test`.
+
 #### Viewing the report without a local Allure CLI
 
 The `allure:*` scripts need `allure` (and a JRE) on the host. To avoid that dependency, `docker-compose.yml` defines an `allure` service that runs a pinned Allure CLI in a container:

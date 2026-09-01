@@ -4,6 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "pretest": "rm -rf allure-results",
     "test": "playwright test",
     "test:auth": "playwright test tests/auth.spec.ts",
     "test:articles": "playwright test tests/articles.spec.ts",
