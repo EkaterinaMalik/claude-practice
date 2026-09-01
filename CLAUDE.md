@@ -29,7 +29,9 @@ Reporters are configured in `playwright.config.ts`: `html`, `list`, `allure-play
 
 `allure-results/` and `allure-report/` are gitignored — generate them locally or in CI as needed. Result files themselves need no extra tooling to produce; only generating/viewing the report needs the `allure` CLI.
 
-**Allure results accumulate.** `allure-playwright` appends to `allure-results/` and never clears it, so two runs leave every test in the report twice (the `--clean` in `allure:generate` cleans the *report* directory, not the results). A `pretest` script therefore does `rm -rf allure-results` before `npm test`. Note it only fires for `npm test` — the per-spec scripts (`test:auth` and friends) append to whatever is already there, which is usually what you want when iterating on one spec, but means the report mixes runs until the next full `npm test`.
+**Allure results accumulate.** `allure-playwright` appends to `allure-results/` and never clears it, so two runs leave every test in the report twice (the `--clean` in `allure:generate` cleans the *report* directory, not the results). A `pretest` script therefore does `rm -rf allure-results` before `npm test`. The per-spec scripts (`test:auth` and friends) are written as `npm test -- tests/<spec>.spec.ts` so the same hook fires for them — keep that form when adding a script, rather than calling `playwright test` directly, or that script will silently append to stale results. The trade-off is deliberate: running one spec leaves a report of just that spec instead of a report that is half stale, half fresh.
+
+CI runs `npx playwright test` directly, so the hook does not fire there — the runner starts from a fresh checkout each time, so there is nothing to accumulate.
 
 #### Viewing the report without a local Allure CLI
 
