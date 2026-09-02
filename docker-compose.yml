@@ -15,3 +15,19 @@ services:
       - ./allure-results:/work/allure-results:ro
       # Writable, for the `generate` override below.
       - ./allure-report:/work/allure-report
+
+  # Run the test suite itself in a container, for machines without Node.
+  #   npm run test:docker                       -> the whole suite
+  #   npm run test:docker -- tests/auth.spec.ts -> one spec
+  tests:
+    build:
+      context: .
+      dockerfile: docker/tests/Dockerfile
+    # Same reason as above: results written to the mounted repo stay yours.
+    user: "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"
+    volumes:
+      # The repo, so tests and config come from the working tree, not the image.
+      - .:/work
+      # Anonymous volume: keeps the image's node_modules from being shadowed by
+      # the host's, which may hold binaries built for a different platform.
+      - /work/node_modules

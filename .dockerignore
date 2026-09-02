@@ -1,0 +1,11 @@
+# The tests image builds from the repo root; keep heavy, generated, and secret
+# files out of the build context. Source is bind-mounted at runtime anyway.
+node_modules
+allure-results
+allure-report
+playwright-report
+junit-results
+test-results
+.git
+.github
+.env

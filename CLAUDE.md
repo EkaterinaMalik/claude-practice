@@ -13,6 +13,9 @@ npm run test:tags
 npm run test:profiles
 npm run report                  # open Playwright's built-in HTML report (must run tests first)
 
+npm run test:docker             # run the whole suite in a container (no local Node needed)
+npm run test:docker -- tests/auth.spec.ts   # ...or one spec
+
 npm run allure:generate         # build the Allure static report from allure-results/
 npm run allure:open             # open the generated Allure report in a browser
 npm run allure:serve            # generate + open in one step (temporary server)
@@ -46,6 +49,22 @@ npm run allure:docker:build   # write allure-report/ to the host, then exit
 - **`-h 0.0.0.0` is required** in the container's serve command. Allure's default binds to localhost *inside* the container, which the published host port cannot reach — the port looks open but every request hangs.
 - **The service runs as the host user** via `user: "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"`, which the npm scripts set from `id -u`/`id -g`. Without it the container writes `allure-report/` as root, and the next local `npm run allure:generate` (or a plain `rm -rf allure-report`) fails with permission errors. Keep the `DOCKER_UID`/`DOCKER_GID` prefix if you edit these scripts.
 - **The npm scripts `mkdir -p` the mounted directories first, deliberately.** Both are gitignored and often absent; Docker auto-creates a missing bind-mount source as a **root-owned** directory, after which `npm test` fails with permission errors trying to write `allure-results/`. Creating them as the host user first avoids that. Keep the `mkdir -p` if you edit these scripts.
+
+#### Running the suite in a container
+
+`docker-compose.yml` also defines a `tests` service (`docker/tests/Dockerfile`, `node:22-slim`) so a machine with only Docker can execute the suite:
+
+```bash
+npm run test:docker                          # whole suite
+npm run test:docker -- tests/auth.spec.ts    # one spec — args append to `npm test --`
+```
+
+- **Only the report viewer needs to be containerized; this service is a convenience.** On a machine that already has Node, plain `npm test` is faster — the container adds image build/start overhead to every run. Reach for `test:docker` for parity checks or on a machine without Node.
+- **No Playwright browser image is needed.** These are pure API tests, so `node:22-slim` plus `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` is enough. Don't swap in `mcr.microsoft.com/playwright` unless a test actually launches a browser.
+- **Dependencies are baked into the image, and an anonymous `/work/node_modules` volume protects them.** The repo is bind-mounted at `/work`, which would otherwise shadow the image's `node_modules` with the host's — binaries there may be built for a different platform. Keep that second volume entry.
+- **`HOME=/tmp` is set in the Dockerfile.** The service runs as the host UID, which has no home directory in the image, and npm needs somewhere writable for its cache and logs.
+- **The script passes `--build` every run.** Docker's layer cache makes that near-free when `package.json`/`package-lock.json` haven't changed, and it means a dependency bump can't leave you testing against a stale image.
+- **`.env` reaches the container through the bind mount**, not the image — it's in `.dockerignore` deliberately, so credentials never land in an image layer.
 
 ## Architecture
 
