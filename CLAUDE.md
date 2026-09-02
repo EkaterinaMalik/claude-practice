@@ -45,8 +45,15 @@ npm run allure:docker         # serve the report at http://localhost:5252
 npm run allure:docker:build   # write allure-report/ to the host, then exit
 ```
 
-- **The CLI version is pinned to 2.36.0** in `docker/allure/Dockerfile`. `allure-playwright` is on 3.x but writes Allure 2-compatible results, so the 2.x CLI renders them correctly — this is the combination known to work here. Bump the `ALLURE_VERSION` build arg only after confirming the report still renders.
-- **`-h 0.0.0.0` is required** in the container's serve command. Allure's default binds to localhost *inside* the container, which the published host port cannot reach — the port looks open but every request hangs.
+- **The CLI version is pinned to 2.36.0** in `docker/allure/Dockerfile`, and the pin is load-bearing for `allure:docker`. Verified 2026-09-03 against 2.46.0: `allure serve` in recent versions **refuses to bind anywhere but localhost** — it exits with `java.io.IOException: 'allure serve' is intended for local report preview only`, which makes serving from a container impossible. `allure generate` on 2.46.0 works fine and renders all 72 tests, so only the serve path is affected. Before bumping `ALLURE_VERSION`, test the serve path specifically:
+
+  ```bash
+  docker build --build-arg ALLURE_VERSION=<new> -t allure-bumptest docker/allure
+  docker run --rm -p 5255:5252 -v "$PWD/allure-results:/work/allure-results:ro" allure-bumptest
+  ```
+
+  If that prints "Server started", the bump is safe. If it prints the IOException above, `allure:docker` would have to switch to `generate` plus a static file server.
+- **`-h 0.0.0.0` is required** in the container's serve command. Allure's default binds to localhost *inside* the container, which the published host port cannot reach. The symptom is not a hang: the log says `Server started at <http://127.0.0.1:5252>` and `curl` from the host returns nothing and exits 56 (connection reset), because Docker's forwarder accepts the connection and then has no listener to hand it to.
 - **The service runs as the host user** via `user: "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"`, which the npm scripts set from `id -u`/`id -g`. Without it the container writes `allure-report/` as root, and the next local `npm run allure:generate` (or a plain `rm -rf allure-report`) fails with permission errors. Keep the `DOCKER_UID`/`DOCKER_GID` prefix if you edit these scripts.
 - **The npm scripts `mkdir -p` the mounted directories first, deliberately.** Both are gitignored and often absent; Docker auto-creates a missing bind-mount source as a **root-owned** directory, after which `npm test` fails with permission errors trying to write `allure-results/`. Creating them as the host user first avoids that. Keep the `mkdir -p` if you edit these scripts.
 
