@@ -121,6 +121,19 @@ No extra CI-detection logic was needed in the workflow itself — the config alr
 
 Only the raw `allure-results/` are uploaded, not a generated `allure-report/` — generating the HTML Allure report requires the `allure` CLI, which isn't installed in this workflow. Add an `allure generate` step (and install the CLI) if a rendered Allure report in CI becomes worth the added run time.
 
+**Viewing a CI run's Allure report locally.** Because the raw results are uploaded, any run can be rendered on your machine without re-running the suite — the repo's containerized Allure CLI does the rendering, so no local Java or `allure` install is needed:
+
+```bash
+gh run list --limit 5                        # find the run id
+gh run download <run-id> -n allure-results -D /tmp/ci-results
+
+docker run --rm -p 5252:5252 -u $(id -u):$(id -g) \
+  -v /tmp/ci-results:/work/allure-results:ro \
+  conduit-api-tests-allure                   # then open http://localhost:5252
+```
+
+Downloading into `/tmp` rather than the repo keeps your own `allure-results/` intact. See CLAUDE.md for the `allure` service the image comes from.
+
 ### 8. Commit and push
 
 ```
@@ -136,6 +149,9 @@ No manual enablement was required on GitHub's side — Actions is on by default 
 - Push a commit or open a PR against `master` and check the **Actions** tab on GitHub — a run should appear for the `API Tests` workflow.
 - Or trigger it manually: **Actions → API Tests → Run workflow** (uses `workflow_dispatch`).
 - On completion, `playwright-report` and `allure-results` artifacts are attached to the run for download.
+- From the terminal with `gh`: `gh run list --limit 5` for recent runs, `gh run watch` to follow one live, and `gh run view --log-failed <run-id>` to read only the failing step's log.
+
+**The workflow does not use the Docker services.** It runs `npx playwright test` directly on the GitHub-hosted runner, which already has Node. Routing CI through the `tests` compose service would add an image build to every run for no gain — and because each run starts from a fresh checkout, the `pretest` hook that clears `allure-results/` locally has nothing to clear there.
 
 ## Full workflow file
 
