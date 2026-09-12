@@ -41,9 +41,10 @@ If a new commit lands on a branch while a previous run is still in progress, the
 ```yaml
 permissions:
   contents: read
+  checks: write
 ```
 
-The workflow only needs to read the repo checkout; no write access to contents, PRs, or packages is granted.
+The workflow only needs to read the repo checkout; no write access to contents, PRs, or packages is granted. The one exception is `checks: write`, required by the `dorny/test-reporter` step in step 7 to publish its check run — without it the tests pass but that step fails on permissions, which reads like a test problem and isn't.
 
 ### 5. Configure the job environment
 
