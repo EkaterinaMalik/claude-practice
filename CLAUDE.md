@@ -77,17 +77,27 @@ npm run test:docker -- tests/auth.spec.ts    # one spec — args append to `npm 
 
 **Target:** REST API at `https://conduit-api.bondaracademy.com/api` — a [RealWorld/Conduit](https://github.com/gothinkster/realworld) spec implementation. All tests are pure API tests (no browser). The single Playwright project is named `api` with no browser attached.
 
-### Layer separation (in progress)
+### Layer separation
 
-The project is being migrated toward a two-layer model:
+The project follows a two-layer model:
 
 | Layer | Location | Role |
 |-------|----------|------|
 | API classes | `support/api/` | Wrap raw HTTP calls; own typed input/output interfaces |
-| Spec files | `tests/` | Assertions only; call API classes, never `request.post/get` directly |
+| Spec files | `tests/` | Assertions only; call API classes, not `request.post/get` (one documented exception below) |
 | Shared models | `support/types.ts` | Domain types shared across API classes (`Article`, `Author`) |
 
-**Currently migrated:** `ArticlesApi.create()`. Remaining spec files still call Playwright's `request` fixture directly — migrate them to the same pattern as you extend coverage.
+**Status:** complete. All five API classes (`ArticlesApi`, `AuthApi`, `CommentsApi`, `ProfilesApi`,
+`TagsApi`) cover every endpoint the suite exercises, and all nine spec files go through them. New specs
+should too — reach for an existing method, or add one to the relevant class, rather than calling
+`request.post/get` from a test.
+
+**One deliberate exception:** `tests/error-response.spec.ts` keeps three direct `request.*` calls, and
+should. It asserts on the *raw* response body — leak patterns via `response.text()`, and the exact
+`{ errors: … }` envelope the server sends — while the API classes exist precisely to parse that away.
+Two of the three would break if routed through a class: the wrappers call `response.json()`, which throws
+on the raw Prisma error text that the `offset=-1` test is built to inspect. Giving every class a
+raw-`APIResponse` escape hatch to serve one spec would cost more than the exception does. Leave it.
 
 ### Key constraints discovered from the live API
 
@@ -98,7 +108,14 @@ The project is being migrated toward a two-layer model:
 
 ### Auth pattern
 
-Tests that need an authenticated context register + login a new user in `beforeAll` or at the top of the test, then dispose the context in `afterAll`. There is no saved auth state. The helper lives inline in each spec file for now; the long-term target is a shared Playwright fixture in `support/fixtures.ts`.
+Tests that need an authenticated context register + login a new user in `beforeAll` or at the top of the
+test, then dispose the context in `afterAll`. There is no saved auth state — this is what keeps the suite
+parallel-safe.
+
+The helper is `createAuthContext(playwright)` in `support/helpers.ts`, used by eight of the nine specs
+(`tags.spec.ts` needs no auth). Call it rather than building an authenticated context by hand. Wrapping it
+as a Playwright fixture in `support/fixtures.ts` has been floated but not built, and the helper is doing
+the job — treat a fixture as optional polish, not pending work.
 
 ## Testing rules
 
