@@ -15,6 +15,6 @@ Review the current Playwright API test suite against the "8 API Testing Mistakes
    - **#7 Response schema not validated** — are Zod schemas (or equivalent) used for runtime field-type validation?
    - **#8 Database state not verified** — after mutations, does a subsequent GET confirm the change persisted?
 3. For each mistake, mark: ✅ covered / ⚠️ partial / ❌ missing, and list specific gaps.
-4. Write the findings to `TEST_RECOMMENDATIONS.md` in the project root with a priority table (effort vs impact).
+4. Write the findings to `TEST_RECOMMENDATIONS.md` in the repo root (alongside CLAUDE.md) with a priority table (effort vs impact).
 
 Keep the document actionable — each gap should name the specific endpoint and test type needed.

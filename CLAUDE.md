@@ -157,3 +157,8 @@ test('PUT /api/articles/:slug — updates all article attributes', async () => {
   });
 });
 ```
+
+### Coverage backlog
+`TEST_RECOMMENDATIONS.md` (repo root) maps the suite against the "8 API Testing
+Mistakes" checklist and carries the remaining-gaps table. Re-check it whenever you
+add, remove, or meaningfully change a spec — it is the file that goes stale first.
