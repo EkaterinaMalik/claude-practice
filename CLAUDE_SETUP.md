@@ -18,8 +18,10 @@ and 2 only. That is worth knowing before you wonder why the hook is silent there
 map of the four items above. Deleting it would not alter how Claude behaves. Deleting any of the
 four would.
 
-**Two more repo files worth knowing**, neither of which is a rule either:
+**Three more repo files worth knowing**, none of which is a rule either:
 
+- `PROJECT_FILES.md` — a map of every file in the project and what it is for. Start there if you
+  are not sure which file to open.
 - `TEST_RECOMMENDATIONS.md` — the test coverage backlog. `CLAUDE.md` points at it, the hook in
   item 3 guards it, and `/api-test-audit` rewrites it.
 - `.github/workflows/` — GitHub Actions. This runs your tests on GitHub after a push. It is not
