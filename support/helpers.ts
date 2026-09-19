@@ -1,5 +1,5 @@
 import type * as playwrightCore from 'playwright-core';
-import { APIRequestContext } from '@playwright/test';
+import { APIRequestContext, APIResponse } from '@playwright/test';
 
 export const API_BASE = process.env.API_BASE_URL!;
 export const TEST_PASSWORD = process.env.TEST_PASSWORD!;
@@ -15,6 +15,18 @@ export function generateEmail(prefix: string, id: string): string {
   return `${prefix}_${id}@${TEST_EMAIL_DOMAIN}`;
 }
 
+/**
+ * Read a response body for an error message without throwing on non-JSON
+ * (the server can return HTML from a proxy on a 5xx).
+ */
+async function describeResponse(response: APIResponse): Promise<string> {
+  try {
+    return (await response.text()).slice(0, 300);
+  } catch {
+    return '<body could not be read>';
+  }
+}
+
 export async function createAuthContext(
   playwright: typeof playwrightCore
 ): Promise<APIRequestContext> {
@@ -27,21 +39,45 @@ export async function createAuthContext(
     extraHTTPHeaders: { 'Content-Type': 'application/json' },
   });
 
-  await tmp.post('/api/users', {
-    data: { user: { username, email, password: TEST_PASSWORD } },
-  });
+  try {
+    const registerRes = await tmp.post('/api/users', {
+      data: { user: { username, email, password: TEST_PASSWORD } },
+    });
+    if (registerRes.status() !== 201) {
+      throw new Error(
+        `createAuthContext: could not register "${username}" — expected 201, got ` +
+          `${registerRes.status()}. Body: ${await describeResponse(registerRes)}`
+      );
+    }
 
-  const loginRes = await tmp.post('/api/users/login', {
-    data: { user: { email, password: TEST_PASSWORD } },
-  });
-  const { user } = await loginRes.json();
-  await tmp.dispose();
+    const loginRes = await tmp.post('/api/users/login', {
+      data: { user: { email, password: TEST_PASSWORD } },
+    });
+    if (loginRes.status() !== 200) {
+      throw new Error(
+        `createAuthContext: could not log in as "${username}" — expected 200, got ` +
+          `${loginRes.status()}. Body: ${await describeResponse(loginRes)}`
+      );
+    }
 
-  return playwright.request.newContext({
-    baseURL: API_BASE,
-    extraHTTPHeaders: {
-      'Content-Type': 'application/json',
-      Authorization: `Token ${user.token}`,
-    },
-  });
+    const body = await loginRes.json();
+    const token = body?.user?.token;
+    if (!token) {
+      throw new Error(
+        `createAuthContext: login for "${username}" returned 200 but no token. ` +
+          `Body: ${JSON.stringify(body).slice(0, 300)}`
+      );
+    }
+
+    return await playwright.request.newContext({
+      baseURL: API_BASE,
+      extraHTTPHeaders: {
+        'Content-Type': 'application/json',
+        Authorization: `Token ${token}`,
+      },
+    });
+  } finally {
+    // Dispose even when a step above threw, so a failed setup does not leak a context.
+    await tmp.dispose();
+  }
 }

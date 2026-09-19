@@ -117,6 +117,12 @@ The helper is `createAuthContext(playwright)` in `support/helpers.ts`, used by e
 as a Playwright fixture in `support/fixtures.ts` has been floated but not built, and the helper is doing
 the job — treat a fixture as optional polish, not pending work.
 
+`createAuthContext` **fails fast and loudly**. It asserts 201 on register and 200 on login, and checks a
+token came back, throwing a message that names the function, the username, the expected and actual status,
+and the first 300 characters of the body. Keep it that way. It runs inside `beforeAll` for five specs, so
+a silent failure there surfaces later as an unrelated `TypeError` in a test that looks unconnected to the
+real cause — which is exactly what it used to do.
+
 ## Testing rules
 
 ### Test independence
