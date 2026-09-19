@@ -95,9 +95,16 @@ should too — reach for an existing method, or add one to the relevant class, r
 **One deliberate exception:** `tests/error-response.spec.ts` keeps three direct `request.*` calls, and
 should. It asserts on the *raw* response body — leak patterns via `response.text()`, and the exact
 `{ errors: … }` envelope the server sends — while the API classes exist precisely to parse that away.
-Two of the three would break if routed through a class: the wrappers call `response.json()`, which throws
-on the raw Prisma error text that the `offset=-1` test is built to inspect. Giving every class a
-raw-`APIResponse` escape hatch to serve one spec would cost more than the exception does. Leave it.
+The reason is that the classes **discard the raw body**. They parse the response and return typed
+fields, so `response.text()` is gone by the time a caller sees the result — and the leak tests need
+exactly that text. The `ErrorSchema` test needs the whole `{ errors: … }` envelope, which
+`AuthApi.register()` splits into a field; rebuilding it would assert against our own reconstruction
+rather than what the server sent. Giving every class a raw-`APIResponse` escape hatch to serve one
+spec would cost more than the exception does. Leave it.
+
+(Note: the `offset=-1` 500 body *is* valid JSON — a JSON string containing the Prisma text — so
+`.json()` parses it without throwing. It is the discarded body that makes the exception necessary,
+not a parse error. An earlier version of this section said otherwise and was wrong.)
 
 ### Key constraints discovered from the live API
 

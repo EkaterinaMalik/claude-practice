@@ -45,8 +45,8 @@ means passing — the day the server is fixed. That is deliberate.
 Tests go through these rather than calling HTTP directly.
 
 **One exception**, and it is deliberate: `error-response.spec.ts` makes three direct `request.*`
-calls. It checks the *raw* response body, which these classes exist to parse away. Routing them
-through a class would break them — see `CLAUDE.md`, Layer separation. Leave them alone.
+calls. It checks the *raw* response body, and these classes throw that body away — they return
+parsed, typed fields instead. See `CLAUDE.md`, Layer separation. Leave them alone.
 
 | File | What it holds |
 |---|---|
