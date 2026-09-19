@@ -191,12 +191,13 @@ So: **when you change a file, check the doc that describes it, in the same chang
 
 | If you change... | Re-check | Look at |
 |---|---|---|
-| `tests/*.spec.ts` | `TEST_RECOMMENDATIONS.md` | coverage lists, Remaining Work table, test count and audit date |
-| `support/api/*`, `helpers.ts`, `types.ts`, `schemas.ts` | `CLAUDE.md` | Architecture — Layer separation, Auth pattern |
-| `package.json`, `playwright.config.ts` | `CLAUDE.md` | Commands, Reporting |
-| `docker-compose.yml`, `docker/` | `CLAUDE.md` | the Allure viewer and container sections |
+| `tests/*.spec.ts` | `TEST_RECOMMENDATIONS.md`, `PROJECT_FILES.md` | coverage lists, Remaining Work table, test count and audit date; and the per-spec test counts in the file map |
+| `support/api/*`, `helpers.ts`, `types.ts`, `schemas.ts` | `CLAUDE.md`, `PROJECT_FILES.md` | Architecture — Layer separation, Auth pattern; and the method lists in the file map |
+| `package.json`, `playwright.config.ts` | `CLAUDE.md`, `PROJECT_FILES.md` | Commands, Reporting; and the script list in the file map |
+| `docker-compose.yml`, `docker/` | `CLAUDE.md`, `PROJECT_FILES.md` | the Allure viewer and container sections; and the config table in the file map |
 | `.github/workflows/` | `CI_SETUP.md` | workflow steps and permissions |
 | `.claude/commands/`, `.claude/hooks/` | `CLAUDE_SETUP.md` | the rule sources and edit-map table |
+| any file added, renamed or deleted | `PROJECT_FILES.md` | it is an inventory, so it goes stale on every move |
 
 ### How to apply it
 
