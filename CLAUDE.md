@@ -179,3 +179,40 @@ test('PUT /api/articles/:slug — updates all article attributes', async () => {
 `TEST_RECOMMENDATIONS.md` (repo root) maps the suite against the "8 API Testing
 Mistakes" checklist and carries the remaining-gaps table. Re-check it whenever you
 add, remove, or meaningfully change a spec — it is the file that goes stale first.
+
+## Keeping docs current
+
+Documentation in this repo has gone stale twice, and both times it cost real work.
+`TEST_RECOMMENDATIONS.md` listed four kinds of tests as missing months after they were written
+and passing. `CLAUDE.md` itself said the API-class migration was barely started when it was
+finished. Anyone trusting either file would have rebuilt what already existed.
+
+So: **when you change a file, check the doc that describes it, in the same change.**
+
+| If you change... | Re-check | Look at |
+|---|---|---|
+| `tests/*.spec.ts` | `TEST_RECOMMENDATIONS.md` | coverage lists, Remaining Work table, test count and audit date |
+| `support/api/*`, `helpers.ts`, `types.ts`, `schemas.ts` | `CLAUDE.md` | Architecture — Layer separation, Auth pattern |
+| `package.json`, `playwright.config.ts` | `CLAUDE.md` | Commands, Reporting |
+| `docker-compose.yml`, `docker/` | `CLAUDE.md` | the Allure viewer and container sections |
+| `.github/workflows/` | `CI_SETUP.md` | workflow steps and permissions |
+| `.claude/commands/`, `.claude/hooks/` | `CLAUDE_SETUP.md` | the rule sources and edit-map table |
+
+### How to apply it
+
+- **Check, do not rewrite.** Most changes leave the docs correct. Say so in one line and move on.
+  Churning a doc every time a file moves is its own kind of noise.
+- **Fix it in the same commit.** A follow-up commit "to update the docs" is the one that never
+  gets written.
+- **Verify before you write.** Read the real files and confirm the claim. Four statements in the
+  2026-09-16 audit looked obviously true and were wrong — the schemas were not strict, the
+  "missing fields" test sent empty strings, the threshold rule was already documented elsewhere,
+  and special characters were only tested on one field.
+- **A stale doc is worse than no doc.** It is confidently wrong, and it is believed.
+
+### The reminder hook
+
+`.claude/hooks/check-docs-current.sh` prints the matching row of the table above after a source
+file is modified. It lives **outside this repo**, under `/home/kateryna/Projects/Claude_project/`,
+so it is not version-controlled and does not travel with a clone. It only reminds — it never edits
+a file and never blocks anything. The rule above stands on its own without it.

@@ -8,7 +8,7 @@ There are four kinds. Two live in this repo. Two live outside it.
 |---|------|-------|-----------------|
 | 1 | Project rules | `CLAUDE.md` (this repo) | Every session, automatically |
 | 2 | Slash commands | `.claude/commands/` (this repo) | Only when you type them |
-| 3 | Hook | `.claude/hooks/` (**outside** this repo) | Runs by itself after a spec file changes |
+| 3 | Hook | `.claude/hooks/` (**outside** this repo) | Runs by itself after a source file changes |
 | 4 | Memory | `~/.claude/projects/.../memory/` (**outside** this repo) | Loaded at the start of a session |
 
 Items 3 and 4 are not in this repo. If you clone this repo on another machine, you get items 1
@@ -56,21 +56,40 @@ Five commands. They only run when you type them.
 Note: `/api-test-audit` **overwrites** `TEST_RECOMMENDATIONS.md`. Run it when you want the file
 rebuilt from scratch, not when you want a small edit.
 
-## 3. Hook — `check-test-recommendations.sh`
+## 3. Hook — `check-docs-current.sh`
 
-Full path: `/home/kateryna/Projects/Claude_project/.claude/hooks/check-test-recommendations.sh`
+Full path: `/home/kateryna/Projects/Claude_project/.claude/hooks/check-docs-current.sh`
 Wired up in: `/home/kateryna/Projects/Claude_project/.claude/settings.local.json`
 
 It is a `PostToolUse` hook. It runs after Claude uses Write, Edit, or Bash.
 
-What it does: if a `tests/*.spec.ts` file was **changed**, it tells Claude to re-check
-`TEST_RECOMMENDATIONS.md`. Nothing more. It never edits a file.
+What it does: if a source file was **changed**, it names the doc that describes that file, and the
+section to look at. Nothing more. It never edits a file and never blocks anything.
 
-It stays silent on reads (`cat`, `grep`) and on test runs. So if it fires, a spec really changed.
+It covers six pairs:
 
-**Why it exists:** `TEST_RECOMMENDATIONS.md` had gone badly out of date. It listed four kinds of
-tests as missing months after they were written and passing. The hook is a reminder so that does
-not happen again.
+| Changed file | Doc it names |
+|---|---|
+| `tests/*.spec.ts` | `TEST_RECOMMENDATIONS.md` |
+| `support/api/*`, `helpers.ts`, `types.ts`, `schemas.ts` | `CLAUDE.md` — Architecture |
+| `package.json`, `playwright.config.ts` | `CLAUDE.md` — Commands, Reporting |
+| `docker-compose.yml`, `docker/` | `CLAUDE.md` — Allure viewer, container run |
+| `.github/workflows/` | `CI_SETUP.md` |
+| `.claude/commands/`, `.claude/hooks/` | `CLAUDE_SETUP.md` — this file |
+
+It stays silent on reads (`cat`, `grep`) and on test runs. So if it fires, a file really changed.
+
+**Why it exists:** docs here went stale twice. `TEST_RECOMMENDATIONS.md` listed four kinds of
+tests as missing months after they were written and passing. `CLAUDE.md` said the API-class
+migration had barely started when it was finished. Both times the stale file claimed work was
+outstanding that was already done — so the work nearly got done twice.
+
+**The rule matters more than the hook.** The written version lives in `CLAUDE.md`, section
+"Keeping docs current", and it travels with a clone. This hook does not — see the note at the top
+of this file. If the hook disappears, follow the rule anyway.
+
+**One known limit:** for a Bash command it reads only the first line. A long heredoc that *writes
+about* file paths used to set it off by mistake. Writing a doc is not the same as changing code.
 
 ## 4. Memory — six files
 
@@ -95,8 +114,9 @@ Memory is personal to you and this machine. It is not shared and not in git.
 | You want to... | Edit this |
 |----------------|-----------|
 | Change how Claude writes tests | `CLAUDE.md` |
+| Change which doc covers which file | `CLAUDE.md` — "Keeping docs current", and the hook |
 | Change what a slash command does | the file in `.claude/commands/` |
-| Change when the reminder fires | `.claude/hooks/check-test-recommendations.sh` |
+| Change when the reminder fires | `.claude/hooks/check-docs-current.sh` |
 | Change how Claude talks to you | ask Claude to save it to memory |
 | Change what to test next | `TEST_RECOMMENDATIONS.md`, or run `/api-test-audit` to rebuild it |
 | Fix this map | `CLAUDE_SETUP.md` — the file you are reading |
