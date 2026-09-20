@@ -34,7 +34,7 @@ and `TEST_RECOMMENDATIONS.md` tracks what is missing from them.
 | `error-response.spec.ts` | 6 | Error body shape, and checks that errors do not leak stack traces or database internals. Holds the one expected failure — a known server bug |
 | `performance.spec.ts` | 5 | Response times on five endpoints, all under one 2000ms threshold |
 | `tags.spec.ts` | 3 | Tag list shape and filtering articles by tag |
-| `e2e-flow.spec.ts` | 1 | One long realistic journey: register → follow → create → update → comment → verify → delete → unfollow → delete |
+| `e2e-flow.spec.ts` | 1 | One long realistic journey: register → follow → create → **comment → update** → verify both → delete comment → unfollow → delete article. The comment is added *before* the update on purpose — the test checks it survives one |
 
 **One test is expected to fail.** In `error-response.spec.ts`, a `test.fail()` marks a real server bug:
 `GET /api/articles?offset=-1` returns 500 with raw Prisma internals. The test will start failing — which
@@ -42,7 +42,11 @@ means passing — the day the server is fixed. That is deliberate.
 
 ## 2. The code the tests use — `support/`
 
-Tests do not call HTTP directly. They go through these.
+Tests go through these rather than calling HTTP directly.
+
+**One exception**, and it is deliberate: `error-response.spec.ts` makes three direct `request.*`
+calls. It checks the *raw* response body, and these classes throw that body away — they return
+parsed, typed fields instead. See `CLAUDE.md`, Layer separation. Leave them alone.
 
 | File | What it holds |
 |---|---|
@@ -57,7 +61,9 @@ Tests do not call HTTP directly. They go through these.
 
 ## 3. Documentation — the `.md` files
 
-Four in this repo. Each has one job, and they do not overlap.
+Five in this repo. Each has a different main job, though they do repeat each other in places —
+this file restates facts that `CLAUDE.md` and `TEST_RECOMMENDATIONS.md` own. Where they
+disagree, those two are the source and this file is the copy.
 
 | File | Answers | Who keeps it current |
 |---|---|---|
@@ -75,6 +81,7 @@ Five more `.md` files live in `.claude/commands/`. They are slash commands, not 
 | File | What it does |
 |---|---|
 | `package.json` | Dependencies, and 14 npm scripts |
+| `package-lock.json` | Exact dependency versions. `npm ci` uses it, and the Docker image caches on it — do not edit by hand |
 | `playwright.config.ts` | One project named `api`, no browser, `fullyParallel: true`, reporters |
 | `.env` | Real values. **Not in git.** |
 | `.env.example` | The same keys with safe placeholder values. In git — copy it to make your `.env` |
@@ -95,7 +102,8 @@ Reports: `report`, `allure:generate`, `allure:open`, `allure:serve`, `allure:doc
 
 All generated, all in `.gitignore`. Safe to delete — they come back.
 
-`node_modules/` · `test-results/` · `playwright-report/` · `allure-results/` · `allure-report/` · `junit-results/`
+`node_modules/` · `test-results/` · `playwright-report/` · `blob-report/` · `playwright/.cache/` ·
+`playwright/.auth/` · `allure-results/` · `allure-report/` · `junit-results/`
 
 If you see a stray `.md` inside `allure-results/` or `test-results/`, it is a test attachment, not
 documentation.
@@ -109,9 +117,10 @@ These are on Kateryna's machine only. A clone of this repo will not have them.
 | `../Recommendations_API.pdf` | The "8 API Testing Mistakes" article that `TEST_RECOMMENDATIONS.md` is built from |
 | `../conduit-project-reference.pdf` / `.html` | A project reference written earlier |
 | `../allure-docker-runbook.pdf` / `.html` | A runbook for the Allure Docker viewer |
+| `../Conduit-API-Test-Reference.docx` / `.pdf` | This file plus `TEST_RECOMMENDATIONS.md`, built for printing |
 | `../.claude/hooks/check-docs-current.sh` | The reminder hook |
 | `../.claude/settings.local.json` | Permissions, and where the hook is wired up |
-| `~/.claude/projects/.../memory/` | 7 memory files — what Claude remembers between sessions |
+| `~/.claude/projects/.../memory/` | Claude's memory: `MEMORY.md` is the index, plus one file per remembered fact. The count changes, so check rather than trust a number here |
 
 The `..` means `/home/kateryna/Projects/Claude_project/`, one level above this repo.
 

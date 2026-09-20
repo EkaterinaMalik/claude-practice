@@ -6,7 +6,7 @@ import { AuthApi } from '../support/api/AuthApi';
 import { createAuthContext, uniqueId, generateEmail, API_BASE, TEST_PASSWORD } from '../support/helpers';
 
 test.describe('End-to-end — Full social flow', () => {
-  test('register → follow → create article → update article → comment → verify → delete comment → unfollow → delete article → verify gone', async ({ playwright }) => {
+  test('register → follow → create article → comment → update article → verify both → delete comment → unfollow → delete article → verify gone', async ({ playwright }) => {
     let targetUsername: string;
 
     await test.step('Register a target user to follow', async () => {
