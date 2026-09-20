@@ -42,7 +42,7 @@ test.describe('Profiles', () => {
 
     await test.step('Register target user and actor', async () => {
       targetUsername = await createTargetUser(playwright);
-      authCtx = await createAuthContext(playwright);
+      authCtx = await createAuthContext();
       api = new ProfilesApi(authCtx);
     });
 
@@ -66,7 +66,7 @@ test.describe('Profiles', () => {
 
     await test.step('Register target user, actor, and follow', async () => {
       targetUsername = await createTargetUser(playwright);
-      authCtx = await createAuthContext(playwright);
+      authCtx = await createAuthContext();
       api = new ProfilesApi(authCtx);
       await api.follow(targetUsername);
     });

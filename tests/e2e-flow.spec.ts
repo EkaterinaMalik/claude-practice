@@ -24,7 +24,7 @@ test.describe('End-to-end — Full social flow', () => {
       await setupCtx.dispose();
     });
 
-    const actorCtx = await createAuthContext(playwright);
+    const actorCtx = await createAuthContext();
     const articlesApi = new ArticlesApi(actorCtx);
     const commentsApi = new CommentsApi(actorCtx);
     const profilesApi = new ProfilesApi(actorCtx);
