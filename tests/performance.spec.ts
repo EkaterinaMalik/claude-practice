@@ -77,7 +77,7 @@ test.describe('Performance — Response time checks', () => {
     let authCtx: APIRequestContext;
 
     await test.step('Register and authenticate a user', async () => {
-      authCtx = await createAuthContext(playwright);
+      authCtx = await createAuthContext();
     });
 
     await test.step('Measure GET /api/user response time', async () => {

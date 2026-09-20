@@ -11,7 +11,7 @@ test.describe('Comments', () => {
   let articleSlug: string;
 
   test.beforeAll(async ({ playwright }) => {
-    authCtx = await createAuthContext(playwright);
+    authCtx = await createAuthContext();
     articlesApi = new ArticlesApi(authCtx);
     commentsApi = new CommentsApi(authCtx);
 

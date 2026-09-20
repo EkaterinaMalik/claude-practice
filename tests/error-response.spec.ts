@@ -12,7 +12,7 @@ test.describe('Error responses — Shape and safety', () => {
   let articleSlug: string;
 
   test.beforeAll(async ({ playwright }) => {
-    authCtx = await createAuthContext(playwright);
+    authCtx = await createAuthContext();
     articlesApi = new ArticlesApi(authCtx);
 
     const { article } = await articlesApi.create({

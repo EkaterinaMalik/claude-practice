@@ -74,7 +74,7 @@ test.describe('Articles — Public endpoints', () => {
 //   });
 
   test('GET /api/articles/:slug — returns a single article', async ({ request, playwright }) => {
-    const authCtx = await createAuthContext(playwright);
+    const authCtx = await createAuthContext();
     const authApi = new ArticlesApi(authCtx);
     let created: Article;
 
@@ -146,7 +146,7 @@ test.describe('Articles — Auth protection', () => {
   });
 
   test('DELETE /api/articles/:slug — returns 401 without token', async ({ request, playwright }) => {
-    const authCtx = await createAuthContext(playwright);
+    const authCtx = await createAuthContext();
     let article: Article;
 
     await test.step('Create article as owner', async () => {
@@ -177,7 +177,7 @@ test.describe('Articles — Auth protection', () => {
     let article: Article;
 
     await test.step('Owner registers and creates an article', async () => {
-      ownerCtx = await createAuthContext(playwright);
+      ownerCtx = await createAuthContext();
       const { article: created } = await new ArticlesApi(ownerCtx).create({
         title: `PW Owner ${uniqueId()}`,
         description: 'owner article',
@@ -187,7 +187,7 @@ test.describe('Articles — Auth protection', () => {
     });
 
     await test.step('Second user registers and attempts to edit the article', async () => {
-      otherCtx = await createAuthContext(playwright);
+      otherCtx = await createAuthContext();
       const { status } = await new ArticlesApi(otherCtx).update(article.slug, { title: 'hijacked' });
       expect(status).toBe(403);
     });
@@ -207,7 +207,7 @@ test.describe('Articles — Auth protection', () => {
     let article: Article;
 
     await test.step('Owner registers and creates an article', async () => {
-      ownerCtx = await createAuthContext(playwright);
+      ownerCtx = await createAuthContext();
       const { article: created } = await new ArticlesApi(ownerCtx).create({
         title: `PW Owner Del ${uniqueId()}`,
         description: 'owner article',
@@ -217,7 +217,7 @@ test.describe('Articles — Auth protection', () => {
     });
 
     await test.step('Second user registers and attempts to delete the article', async () => {
-      otherCtx = await createAuthContext(playwright);
+      otherCtx = await createAuthContext();
       const { status } = await new ArticlesApi(otherCtx).delete(article.slug);
       expect(status).toBe(403);
     });
@@ -238,7 +238,7 @@ test.describe('Articles — Authenticated endpoints', () => {
   let createdSlug: string;
 
   test.beforeAll(async ({ playwright }) => {
-    authCtx = await createAuthContext(playwright);
+    authCtx = await createAuthContext();
     api = new ArticlesApi(authCtx);
   });
 
