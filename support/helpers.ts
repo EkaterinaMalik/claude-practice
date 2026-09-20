@@ -34,12 +34,14 @@ export async function createAuthContext(
   const email = generateEmail('t', id);
   const username = `u_${id}`;
 
+  // Create a new context 'tmp' to create a new user
   const tmp = await playwright.request.newContext({
     baseURL: API_BASE,
     extraHTTPHeaders: { 'Content-Type': 'application/json' },
   });
 
   try {
+    //Create a new user, check status is 201, success
     const registerRes = await tmp.post('/api/users', {
       data: { user: { username, email, password: TEST_PASSWORD } },
     });
@@ -50,6 +52,7 @@ export async function createAuthContext(
       );
     }
 
+   // Login using new user and get token
     const loginRes = await tmp.post('/api/users/login', {
       data: { user: { email, password: TEST_PASSWORD } },
     });
@@ -62,6 +65,8 @@ export async function createAuthContext(
 
     const body = await loginRes.json();
     const token = body?.user?.token;
+
+    // Check if a new token really exists
     if (!token) {
       throw new Error(
         `createAuthContext: login for "${username}" returned 200 but no token. ` +
@@ -69,6 +74,8 @@ export async function createAuthContext(
       );
     }
 
+    // return: created new context which contains Authorization Token
+    // further requests will be run using this Authorized user 
     return await playwright.request.newContext({
       baseURL: API_BASE,
       extraHTTPHeaders: {
