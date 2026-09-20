@@ -1,5 +1,4 @@
-import type * as playwrightCore from 'playwright-core';
-import { APIRequestContext, APIResponse } from '@playwright/test';
+import { request, APIRequestContext, APIResponse } from '@playwright/test';
 
 export const API_BASE = process.env.API_BASE_URL!;
 export const TEST_PASSWORD = process.env.TEST_PASSWORD!;
@@ -27,15 +26,13 @@ async function describeResponse(response: APIResponse): Promise<string> {
   }
 }
 
-export async function createAuthContext(
-  playwright: typeof playwrightCore
-): Promise<APIRequestContext> {
+export async function createAuthContext(): Promise<APIRequestContext> {
   const id = uniqueId();
   const email = generateEmail('t', id);
   const username = `u_${id}`;
 
   // Create a new context 'tmp' to create a new user
-  const tmp = await playwright.request.newContext({
+  const tmp = await request.newContext({
     baseURL: API_BASE,
     extraHTTPHeaders: { 'Content-Type': 'application/json' },
   });
@@ -76,7 +73,7 @@ export async function createAuthContext(
 
     // return: created new context which contains Authorization Token
     // further requests will be run using this Authorized user 
-    return await playwright.request.newContext({
+    return await request.newContext({
       baseURL: API_BASE,
       extraHTTPHeaders: {
         'Content-Type': 'application/json',
