@@ -52,14 +52,37 @@ The workflow only needs to read the repo checkout; no write access to contents, 
 runs-on: ubuntu-latest
 timeout-minutes: 15
 env:
-  API_BASE_URL: https://conduit-api.bondaracademy.com
-  TEST_PASSWORD: TestPass123!
-  TEST_NEW_PASSWORD: NewPass456!
-  TEST_AVATAR_URL: https://example.com/avatar.png
-  TEST_EMAIL_DOMAIN: example.com
+  API_BASE_URL: ${{ vars.API_BASE_URL }}
+  TEST_AVATAR_URL: ${{ vars.TEST_AVATAR_URL }}
+  TEST_EMAIL_DOMAIN: ${{ vars.TEST_EMAIL_DOMAIN }}
+  TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
+  TEST_NEW_PASSWORD: ${{ secrets.TEST_NEW_PASSWORD }}
 ```
 
-These mirror the local `.env` file (see `.env.example`). Since the target is a public demo API with no real secrets involved, the values are inlined directly as job-level env vars rather than stored in GitHub Secrets. **If this suite ever points at an API with real credentials, move these to repo/organization Secrets and reference them as `${{ secrets.NAME }}` instead.**
+These mirror the local `.env` file (see `.env.example`), but the values live on GitHub rather than in
+this file. They are split by kind:
+
+| Kind | Holds | Visible? | Manage with |
+|------|-------|----------|-------------|
+| **Variables** (`vars.`) | `API_BASE_URL`, `TEST_AVATAR_URL`, `TEST_EMAIL_DOMAIN` | yes, in plain text | `gh variable list` / `gh variable set NAME` |
+| **Secrets** (`secrets.`) | `TEST_PASSWORD`, `TEST_NEW_PASSWORD` | no, masked in logs | `gh secret list` / `gh secret set NAME` |
+
+The split is by *kind of value*, not by sensitivity. A URL or a domain is configuration: you want to
+read it, and hiding it only makes debugging harder. A password belongs in Secrets whatever it
+protects, so the habit holds when the credential does start to matter.
+
+Nothing here is genuinely confidential — the target is a public demo API and every test registers a
+throwaway user — but keeping the shape right means the workflow needs no change on the day it points
+at something real.
+
+**Two things to know:**
+
+- **Forked pull requests get no secrets.** GitHub withholds them from `pull_request` runs originating
+  in a fork, so `TEST_PASSWORD` arrives empty and the suite fails. Pushes and PRs from branches in
+  this repository are unaffected.
+- **A missing or misspelled name fails quietly.** `${{ vars.TYPO }}` expands to an empty string, not
+  an error. An empty `API_BASE_URL` surfaces as `Invalid URL` from deep inside a request, which points
+  nowhere near the real cause.
 
 A 15-minute timeout guards against a hung run consuming Actions minutes indefinitely.
 
