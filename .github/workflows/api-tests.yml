@@ -20,11 +20,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      API_BASE_URL: https://conduit-api.bondaracademy.com
-      TEST_PASSWORD: TestPass123!
-      TEST_NEW_PASSWORD: NewPass456!
-      TEST_AVATAR_URL: https://example.com/avatar.png
-      TEST_EMAIL_DOMAIN: example.com
+      # Config lives in repo Variables (visible), credentials in repo Secrets (masked).
+      # Manage with: gh variable list / gh secret list
+      API_BASE_URL: ${{ vars.API_BASE_URL }}
+      TEST_AVATAR_URL: ${{ vars.TEST_AVATAR_URL }}
+      TEST_EMAIL_DOMAIN: ${{ vars.TEST_EMAIL_DOMAIN }}
+      TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
+      TEST_NEW_PASSWORD: ${{ secrets.TEST_NEW_PASSWORD }}
 
     steps:
       - name: Checkout code
