@@ -1,4 +1,4 @@
-import { request, APIRequestContext, APIResponse } from '@playwright/test';
+import { test, request, APIRequestContext, APIResponse } from '@playwright/test';
 
 export const API_BASE = process.env.API_BASE_URL!;
 export const TEST_PASSWORD = process.env.TEST_PASSWORD!;
@@ -23,6 +23,52 @@ async function describeResponse(response: APIResponse): Promise<string> {
     return (await response.text()).slice(0, 300);
   } catch {
     return '<body could not be read>';
+  }
+}
+
+/**
+ * Run a cleanup call and report it when it does not succeed.
+ *
+ * The API classes return `{ status }` and do NOT throw on a non-2xx response —
+ * Playwright's `failOnStatusCode` defaults to false. So the older pattern,
+ *
+ *     await api.delete(slug).catch(e => console.warn('Cleanup failed:', e));
+ *
+ * only ever fired on a transport error. A 403 (wrong owner) or 404 resolved
+ * normally, the `.catch` never ran, and the resource stayed on the shared
+ * server with nothing logged — the exact silent failure the cleanup rule exists
+ * to prevent.
+ *
+ * This checks the status as well as catching throws, and records an annotation
+ * so the failure shows up in the HTML and Allure reports, not just in stdout.
+ * It never rethrows: a cleanup problem must not mask the real test result.
+ */
+export async function cleanup(
+  label: string,
+  action: () => Promise<{ status: number }>
+): Promise<void> {
+  let problem: string | undefined;
+
+  try {
+   // const result = await action();
+   // const status = result.status;
+    const { status } = await action();
+    if (status < 200 || status >= 300) {
+      problem = `${label} — server returned ${status}`;
+    }
+  } catch (error) {
+    problem = `${label} — ${(error as Error).message ?? error}`;
+  }
+
+  if (!problem) return;
+
+  console.warn(`Cleanup failed: ${problem}`);
+  try {
+    // Not available in beforeAll/afterAll; the report entry is a bonus, not the point.
+    test.info().annotations.push({ type: 'cleanup-failed', description: problem });
+  
+  } catch {
+    /* outside a running test — the console warning above still stands */
   }
 }
 

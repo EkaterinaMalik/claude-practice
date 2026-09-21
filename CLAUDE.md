@@ -135,12 +135,30 @@ real cause — which is exactly what it used to do.
 ### Test independence
 Every test must create its own data and clean up after itself so cleanup failures never mask test failures. Never read data created by another test. `beforeAll` is only acceptable for a single shared read-only value (e.g. an article slug reused across comment tests in the same describe block). All tests must be safe to run in parallel (`fullyParallel: true`).
 
-Cleanup calls must not fail silently. Catch the error and log it rather than swallowing it with a bare `.catch(() => {})` — a silent cleanup failure looks identical to a healthy test in CI output, and hides real problems (e.g. a resource that was never actually deleted, leaking state into later runs):
+Cleanup calls must not fail silently. A silent cleanup failure looks identical to a healthy test in
+CI output, and hides real problems — a resource that was never actually deleted leaks state into
+later runs. Use the `cleanup()` helper from `support/helpers.ts`:
 ```typescript
+await cleanup(`article ${article.slug}`, () => api.delete(article.slug));
+```
+
+**Do not go back to `.catch()`.** The obvious-looking pattern below was used here until 2026-09-20
+and does not work:
+```typescript
+// BROKEN - cannot detect a failed cleanup
 await api.delete(article.slug).catch((error) => {
   console.warn('Cleanup failed:', error);
 });
 ```
+The API classes return `{ status }` and never throw on a non-2xx response, because Playwright's
+`failOnStatusCode` defaults to `false`. A 403 (wrong owner) or 404 resolves normally, so `.catch`
+never runs. Verified against the live server: a cross-user delete returned 403, the old pattern
+logged nothing, and the article was still there afterwards.
+
+`cleanup()` checks the status *and* catches throws, warns, and adds a `cleanup-failed` annotation
+so the problem appears in the HTML and Allure reports rather than only in stdout. It never
+rethrows — a cleanup problem must not mask the real test result. It works for anything returning
+`{ status }`, so use it for `unfavorite` and `unfollow` cleanups too, not just deletes.
 
 ### TypeScript interfaces as test data structure
 Define TypeScript interfaces for all API request/response shapes in `support/api/` (e.g. `CreateArticleInput`, `UpdateArticleInput`). Use these interfaces to type all test data — they serve as living documentation of the expected shape and give compile-time safety. When intentionally sending incomplete data to test server-side validation, use an explicit `as InterfaceType` cast to make the violation visible and deliberate:

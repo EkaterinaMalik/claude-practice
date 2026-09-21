@@ -4,7 +4,7 @@ import { AuthApi } from '../support/api/AuthApi';
 import { CommentsApi } from '../support/api/CommentsApi';
 import { ProfilesApi } from '../support/api/ProfilesApi';
 import { TagsApi } from '../support/api/TagsApi';
-import { createAuthContext, uniqueId, generateEmail, API_BASE, TEST_PASSWORD } from '../support/helpers';
+import { createAuthContext, uniqueId, generateEmail, API_BASE, TEST_PASSWORD, cleanup } from '../support/helpers';
 import {
   ArticleSchema,
   CommentSchema,
@@ -35,9 +35,7 @@ test.describe('Schema validation — Response shape', () => {
 
   test.afterAll(async () => {
     if (articleSlug) {
-      await articlesApi.delete(articleSlug).catch((error) => {
-        console.warn('Cleanup failed:', error);
-      });
+      await cleanup(`article ${articleSlug}`, () => articlesApi.delete(articleSlug));
     }
     await authCtx.dispose();
   });

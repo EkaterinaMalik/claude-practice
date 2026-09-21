@@ -1,7 +1,7 @@
 import { test, expect, APIRequestContext } from '@playwright/test';
 import { ProfilesApi } from '../support/api/ProfilesApi';
 import { AuthApi } from '../support/api/AuthApi';
-import { createAuthContext, uniqueId, generateEmail, API_BASE, TEST_PASSWORD } from '../support/helpers';
+import { createAuthContext, uniqueId, generateEmail, API_BASE, TEST_PASSWORD, cleanup } from '../support/helpers';
 
 async function createTargetUser(playwright: any): Promise<string> {
   const id = uniqueId();
@@ -54,7 +54,7 @@ test.describe('Profiles', () => {
     });
 
     await test.step('Cleanup: unfollow and dispose context', async () => {
-      await api.unfollow(targetUsername);
+      await cleanup(`unfollow ${targetUsername}`, () => api.unfollow(targetUsername));
       await authCtx.dispose();
     });
   });

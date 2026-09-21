@@ -1,7 +1,7 @@
 import { test, expect, APIRequestContext } from '@playwright/test';
 import { ArticlesApi } from '../support/api/ArticlesApi';
 import { CommentsApi } from '../support/api/CommentsApi';
-import { createAuthContext, uniqueId } from '../support/helpers';
+import { createAuthContext, uniqueId, cleanup } from '../support/helpers';
 import { ErrorSchema } from '../support/schemas';
 
 const LEAK_PATTERNS = ['PrismaClient', 'prisma.', 'at Object.', 'at Module.', 'node_modules'];
@@ -25,9 +25,7 @@ test.describe('Error responses — Shape and safety', () => {
 
   test.afterAll(async () => {
     if (articleSlug) {
-      await articlesApi.delete(articleSlug).catch((error) => {
-        console.warn('Cleanup failed:', error);
-      });
+      await cleanup(`article ${articleSlug}`, () => articlesApi.delete(articleSlug));
     }
     await authCtx.dispose();
   });
