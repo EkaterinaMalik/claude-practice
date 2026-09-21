@@ -2,7 +2,7 @@ import { test, expect, APIRequestContext } from '@playwright/test';
 import { ArticlesApi } from '../support/api/ArticlesApi';
 import { CommentsApi } from '../support/api/CommentsApi';
 import { Comment } from '../support/types';
-import { createAuthContext } from '../support/helpers';
+import { createAuthContext, cleanup } from '../support/helpers';
 
 test.describe('Comments', () => {
   let authCtx: APIRequestContext;
@@ -26,9 +26,7 @@ test.describe('Comments', () => {
 
   test.afterAll(async () => {
     if (articleSlug) {
-      await articlesApi.delete(articleSlug).catch((error) => {
-        console.warn('Cleanup failed:', error);
-      });
+      await cleanup(`article ${articleSlug}`, () => articlesApi.delete(articleSlug));
     }
     await authCtx.dispose();
   });
@@ -70,9 +68,7 @@ test.describe('Comments', () => {
     });
 
     await test.step('Cleanup: delete comment', async () => {
-      await commentsApi.delete(articleSlug, comment.id).catch((error) => {
-        console.warn('Cleanup failed:', error);
-      });
+      await cleanup(`comment ${comment.id} on ${articleSlug}`, () => commentsApi.delete(articleSlug, comment.id));
     });
   });
 
