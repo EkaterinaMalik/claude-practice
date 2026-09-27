@@ -26,6 +26,9 @@ test.describe('Articles — Public endpoints', () => {
     const { articles: page2 } = await api.getAll({ limit: 2, offset: 2 });
 
     expect(page1.length).toBe(2);
+    // Without this the disjointness loop below can compare nothing and still pass.
+    expect(page2.length, 'second page is empty — nothing to check for overlap')
+      .toBeGreaterThan(0);
 
     const page1Slugs = new Set(page1.map(a => a.slug));
     for (const a of page2) {
@@ -267,13 +270,15 @@ test.describe('Articles — Authenticated endpoints', () => {
     let updated: Article;
 
     await test.step('Create article to be updated', async () => {
-      const { article } = await api.create({
+      const { status, article } = await api.create({
         title: `PW Pre-update ${Date.now()}`,
         description: 'Pre-update description',
         body: 'Pre-update body.',
         tagList: ['playwright'],
       });
-      expect(article.slug, 'Article creation must succeed before update can be tested').toBeTruthy();
+      // Assert the status, not article.slug: on a failed create `article` is undefined,
+      // so reading .slug throws a TypeError before the message below can be shown.
+      expect(status, 'Article creation must succeed before update can be tested').toBe(201);
       created = article;
     });
 
@@ -336,12 +341,13 @@ test.describe('Articles — Authenticated endpoints', () => {
     let created: Article;
 
     await test.step('Create and favorite article', async () => {
-      const { article } = await api.create({
+      const { status, article } = await api.create({
         title: `PW Unfav ${uniqueId()}`,
         description: 'For unfavorite test',
         body: 'Article for unfavorite test.',
         tagList: [],
       });
+      expect(status, 'Article creation must succeed before unfavorite can be tested').toBe(201);
       created = article;
       await api.favorite(created.slug);
     });

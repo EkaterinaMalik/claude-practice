@@ -15,12 +15,16 @@ test.describe('Comments', () => {
     articlesApi = new ArticlesApi(authCtx);
     commentsApi = new CommentsApi(authCtx);
 
-    const { article } = await articlesApi.create({
+    const { status, article } = await articlesApi.create({
       title: `Cmts ${Date.now()}`,
       description: 'For comment tests',
       body: 'Article body for comment tests.',
       tagList: [],
     });
+    // ArticleResult types `article` as non-optional, but it is undefined on a
+    // non-2xx. Without this check a failed setup surfaces later as "Cannot read
+    // properties of undefined", inside a test that looks unrelated.
+    expect(status, 'setup article was not created').toBe(201);
     articleSlug = article.slug;
   });
 
