@@ -76,7 +76,7 @@ test.describe('Articles — Public endpoints', () => {
 //     }
 //   });
 
-  test('GET /api/articles/:slug — returns a single article', async ({ request, playwright }) => {
+  test('GET /api/articles/:slug — returns a single article', async ({ request }) => {
     const authCtx = await createAuthContext();
     const authApi = new ArticlesApi(authCtx);
     let created: Article;
@@ -151,7 +151,7 @@ test.describe('Articles — Auth protection', () => {
     expect(status).toBe(401);
   });
 
-  test('DELETE /api/articles/:slug — returns 401 without token', async ({ request, playwright }) => {
+  test('DELETE /api/articles/:slug — returns 401 without token', async ({ request }) => {
     const authCtx = await createAuthContext();
     let article: Article;
 
@@ -175,7 +175,7 @@ test.describe('Articles — Auth protection', () => {
     });
   });
 
-  test('PUT /api/articles/:slug — returns 403 when editing another user\'s article', async ({ playwright }) => {
+  test('PUT /api/articles/:slug — returns 403 when editing another user\'s article', async () => {
     let ownerCtx: APIRequestContext;
     let otherCtx: APIRequestContext;
     let article: Article;
@@ -203,7 +203,7 @@ test.describe('Articles — Auth protection', () => {
     });
   });
 
-  test('DELETE /api/articles/:slug — returns 403 when deleting another user\'s article', async ({ playwright }) => {
+  test('DELETE /api/articles/:slug — returns 403 when deleting another user\'s article', async () => {
     let ownerCtx: APIRequestContext;
     let otherCtx: APIRequestContext;
     let article: Article;
@@ -237,7 +237,7 @@ test.describe('Articles — Authenticated endpoints', () => {
   let api: ArticlesApi;
   let createdSlug: string;
 
-  test.beforeAll(async ({ playwright }) => {
+  test.beforeAll(async () => {
     authCtx = await createAuthContext();
     api = new ArticlesApi(authCtx);
   });

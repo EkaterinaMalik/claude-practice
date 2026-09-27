@@ -73,7 +73,7 @@ test.describe('Performance — Response time checks', () => {
     });
   });
 
-  test('GET /api/user — responds within 2000ms when authenticated', async ({ playwright }) => {
+  test('GET /api/user — responds within 2000ms when authenticated', async () => {
     let authCtx: APIRequestContext;
 
     await test.step('Register and authenticate a user', async () => {

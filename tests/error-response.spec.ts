@@ -11,7 +11,7 @@ test.describe('Error responses — Shape and safety', () => {
   let articlesApi: ArticlesApi;
   let articleSlug: string;
 
-  test.beforeAll(async ({ playwright }) => {
+  test.beforeAll(async () => {
     authCtx = await createAuthContext();
     articlesApi = new ArticlesApi(authCtx);
 
