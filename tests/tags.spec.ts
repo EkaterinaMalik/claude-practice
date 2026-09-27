@@ -8,6 +8,8 @@ test.describe('Tags', () => {
 
     expect(status).toBe(200);
     expect(Array.isArray(tags)).toBe(true);
+    expect(tags.length, 'no tags returned — the type check below would pass vacuously')
+      .toBeGreaterThan(0);
     for (const t of tags) {
       expect(typeof t).toBe('string');
       expect(t.length).toBeGreaterThan(0);
@@ -26,6 +28,11 @@ test.describe('Tags', () => {
     const { status, articles } = await new ArticlesApi(request).getAll({ tag, limit: 5 });
 
     expect(status).toBe(200);
+    // Depends on the server's seed data: this filter only returns pre-seeded articles,
+    // never ones the suite creates. If it returns nothing the loop proves nothing, so
+    // fail loudly rather than pass silently.
+    expect(articles.length, `no articles carry the tag "${tag}" — seed data may have changed`)
+      .toBeGreaterThan(0);
     for (const article of articles) {
       expect(article.tagList).toContain(tag);
     }

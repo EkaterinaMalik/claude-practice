@@ -19,17 +19,21 @@ test.describe('Schema validation — Response shape', () => {
   let commentsApi: CommentsApi;
   let articleSlug: string;
 
-  test.beforeAll(async ({ playwright }) => {
+  test.beforeAll(async () => {
     authCtx = await createAuthContext();
     articlesApi = new ArticlesApi(authCtx);
     commentsApi = new CommentsApi(authCtx);
 
-    const { article } = await articlesApi.create({
+    const { status, article } = await articlesApi.create({
       title: `Schema test ${uniqueId()}`,
       description: 'Created for schema validation tests',
       body: 'Schema validation test article body.',
       tagList: [],
     });
+    // ArticleResult types `article` as non-optional, but it is undefined on a
+    // non-2xx. Without this check a failed setup surfaces later as "Cannot read
+    // properties of undefined", inside a test that looks unrelated.
+    expect(status, 'setup article was not created').toBe(201);
     articleSlug = article.slug;
   });
 
@@ -43,6 +47,9 @@ test.describe('Schema validation — Response shape', () => {
   test('GET /api/articles — each article matches ArticleSchema', async ({ request }) => {
     const { status, articles } = await new ArticlesApi(request).getAll({ limit: 5 });
     expect(status).toBe(200);
+    // Without this the loop below can validate nothing and still report green.
+    expect(articles.length, 'no articles returned — the schema check would pass vacuously')
+      .toBeGreaterThan(0);
     for (const article of articles) {
       ArticleSchema.parse(article);
     }
@@ -131,12 +138,21 @@ test.describe('Schema validation — Response shape', () => {
 
   test('GET /api/articles/:slug/comments — each comment matches CommentSchema', async ({ request }) => {
     await test.step('Add a comment', async () => {
-      await commentsApi.create(articleSlug, 'Comment for schema validation.');
+      // Checked, not discarded: if this write failed the list below comes back empty,
+      // the loop never runs, and the test reports green having validated nothing.
+      const { status } = await commentsApi.create(articleSlug, 'Comment for schema validation.');
+      expect(status).toBe(200);
     });
 
     await test.step('Validate each comment in the list', async () => {
-      const { status, comments } = await new CommentsApi(request).list(articleSlug);
+      // Listed through the AUTHENTICATED context on purpose. This server returns an
+      // empty comments array to unauthenticated callers, even for seeded articles, so
+      // listing via the plain `request` fixture yields nothing and the loop below
+      // validates nothing. See "Key constraints" in CLAUDE.md.
+      const { status, comments } = await commentsApi.list(articleSlug);
       expect(status).toBe(200);
+      expect(comments.length, 'no comments returned — the schema check would pass vacuously')
+        .toBeGreaterThan(0);
       for (const comment of comments) {
         CommentSchema.parse(comment);
       }

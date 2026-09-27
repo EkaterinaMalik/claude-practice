@@ -111,6 +111,10 @@ not a parse error. An earlier version of this section said otherwise and was wro
 - **Username max length: 20 characters.** Use `uniqueId()` — last 10 digits of timestamp + 3-char random suffix — to generate usernames that fit: `u_${uniqueId()}` = 14 chars max.
 - **Login error code is 403**, not 422, for wrong credentials on this server (deviates from the RealWorld spec).
 - **`/api/articles/feed`** requires auth; returns an empty list for new users (they follow nobody).
+- **`GET /api/articles/:slug/comments` returns an empty array to unauthenticated callers**, even
+  for seeded articles with comments. Authenticate before listing comments, or any loop over the
+  result validates nothing and the test passes vacuously. Found 2026-09-21: a schema test had been
+  green for months while checking zero comments.
 - All tests register fresh throw-away users (`example.com` emails) — no shared credentials file.
 
 ### Auth pattern
