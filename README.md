@@ -2,9 +2,19 @@
 
 [![API Tests](https://github.com/EkaterinaMalik/claude-practice/actions/workflows/api-tests.yml/badge.svg)](https://github.com/EkaterinaMalik/claude-practice/actions/workflows/api-tests.yml)
 
-A Playwright + TypeScript test suite for the [Conduit](https://conduit-api.bondaracademy.com) demo API — the RealWorld reference backend (articles, comments, profiles, auth).
+An API test suite built the way a suite has to be built to survive: **72 tests that run in parallel in any order**, each creating its own data and cleaning up after itself, against a live third-party server that cannot be reset between runs.
 
-**72 tests in 9 spec files.** Pure API tests: no browser is ever launched, so runs take about 15 seconds and need no Playwright browser download.
+Written in Playwright and TypeScript. The whole suite finishes in about 15 seconds — these are pure API tests, so no browser is ever launched and no browser binaries are downloaded.
+
+What it demonstrates:
+
+- **Test independence under real conditions.** Every test registers a throwaway user. Nothing is shared, nothing is ordered, `fullyParallel` is on.
+- **Validation that runs, not just compiles.** TypeScript types vanish at runtime, so every response shape is checked again with zod against what the server actually sent.
+- **Failures that point at the cause.** Cleanup problems are reported rather than swallowed, a missing environment variable names itself, and a known server bug is pinned with `test.fail()` so it starts failing the day it is fixed.
+- **Reporting and CI as part of the suite, not an afterthought.** Four reporters from one run, Allure viewable with nothing installed but Docker, and GitHub Actions publishing a check run on every push and pull request.
+- **Server quirks documented, not worked around.** The target is a public demo API with real oddities; each one is written down with the test that pins it.
+
+The system under test is [Conduit](https://conduit-api.bondaracademy.com), the RealWorld reference backend — articles, comments, profiles and auth.
 
 ## Quick start
 
