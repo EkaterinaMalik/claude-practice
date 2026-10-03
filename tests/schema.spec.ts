@@ -41,7 +41,8 @@ test.describe('Schema validation — Response shape', () => {
     if (articleSlug) {
       await cleanup(`article ${articleSlug}`, () => articlesApi.delete(articleSlug));
     }
-    await authCtx.dispose();
+    // `?.` so a failed beforeAll reports its own error, not a second TypeError here.
+    await authCtx?.dispose();
   });
 
   test('GET /api/articles — each article matches ArticleSchema', async ({ request }) => {

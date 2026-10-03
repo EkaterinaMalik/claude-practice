@@ -31,7 +31,9 @@ test.describe('Error responses — Shape and safety', () => {
     if (articleSlug) {
       await cleanup(`article ${articleSlug}`, () => articlesApi.delete(articleSlug));
     }
-    await authCtx.dispose();
+    
+    // `?.` so a failed beforeAll reports its own error, not a second TypeError here.
+    await authCtx?.dispose();
   });
 
   // --- Error shape: { errors: { field: string[] } } ---

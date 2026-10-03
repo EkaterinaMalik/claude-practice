@@ -1,5 +1,6 @@
 import { defineConfig } from '@playwright/test';
 import dotenv from 'dotenv';
+import { requiredEnv } from './support/env';
 
 dotenv.config();
 
@@ -16,7 +17,7 @@ export default defineConfig({
     ['junit', { outputFile: 'junit-results/results.xml' }],
   ],
   use: {
-    baseURL: process.env.API_BASE_URL,
+    baseURL: requiredEnv('API_BASE_URL'),
     extraHTTPHeaders: {
       'Content-Type': 'application/json',
     },

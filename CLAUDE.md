@@ -111,10 +111,23 @@ not a parse error. An earlier version of this section said otherwise and was wro
 - **Username max length: 20 characters.** Use `uniqueId()` — last 10 digits of timestamp + 3-char random suffix — to generate usernames that fit: `u_${uniqueId()}` = 14 chars max.
 - **Login error code is 403**, not 422, for wrong credentials on this server (deviates from the RealWorld spec).
 - **`/api/articles/feed`** requires auth; returns an empty list for new users (they follow nobody).
-- **`GET /api/articles/:slug/comments` returns an empty array to unauthenticated callers**, even
-  for seeded articles with comments. Authenticate before listing comments, or any loop over the
-  result validates nothing and the test passes vacuously. Found 2026-09-21: a schema test had been
-  green for months while checking zero comments.
+- **Anonymous reads only ever see the pre-seeded data.** This is the single most surprising thing
+  about this server, and it has bitten the suite three separate ways:
+
+  | Anonymous request | What you get |
+  |---|---|
+  | `GET /api/articles` | only the 10 seeded articles, `articlesCount` always 10 — nothing the suite creates appears, ever |
+  | `GET /api/articles?author=<any user>` | empty |
+  | `GET /api/articles/:slug/comments` | empty, even for a seeded article that has comments |
+
+  Authenticate and the same calls return live data: the article you just created is at the top of
+  the list and the count goes to 11. Measured 2026-09-27.
+
+  **Two consequences.** First, any loop over an anonymous response can iterate zero times and pass
+  vacuously — a schema test was green for months validating zero comments before this was found.
+  Authenticate whenever the test needs to see its own writes. Second, the anonymous article list is
+  effectively **static**, so tests reading it are not racing the rest of the suite and articles
+  leaked by a failing test cannot perturb them.
 - All tests register fresh throw-away users (`example.com` emails) — no shared credentials file.
 
 ### Auth pattern

@@ -26,7 +26,8 @@ test.describe('Authentication', () => {
   });
 
   test.afterAll(async () => {
-    await ctx.dispose();
+    // `?.` so a failed beforeAll reports its own error, not a second TypeError here.
+    await ctx?.dispose();
   });
 
   test('POST /api/users — registers a new user successfully', async ({ request }) => {

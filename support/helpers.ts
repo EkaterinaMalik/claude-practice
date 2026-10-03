@@ -1,10 +1,11 @@
 import { test, request, APIRequestContext, APIResponse } from '@playwright/test';
+import { requiredEnv } from './env';
 
-export const API_BASE = process.env.API_BASE_URL!;
-export const TEST_PASSWORD = process.env.TEST_PASSWORD!;
-export const TEST_NEW_PASSWORD = process.env.TEST_NEW_PASSWORD!;
-export const TEST_AVATAR_URL = process.env.TEST_AVATAR_URL!;
-export const TEST_EMAIL_DOMAIN = process.env.TEST_EMAIL_DOMAIN!;
+export const API_BASE = requiredEnv('API_BASE_URL');
+export const TEST_PASSWORD = requiredEnv('TEST_PASSWORD');
+export const TEST_NEW_PASSWORD = requiredEnv('TEST_NEW_PASSWORD');
+export const TEST_AVATAR_URL = requiredEnv('TEST_AVATAR_URL');
+export const TEST_EMAIL_DOMAIN = requiredEnv('TEST_EMAIL_DOMAIN');
 
 export function uniqueId(): string {
   return `${Date.now().toString().slice(-10)}_${Math.random().toString(36).slice(2, 5)}`;

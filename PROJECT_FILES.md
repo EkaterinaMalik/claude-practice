@@ -55,7 +55,8 @@ parsed, typed fields instead. See `CLAUDE.md`, Layer separation. Leave them alon
 | `api/CommentsApi.ts` | list, create, delete |
 | `api/ProfilesApi.ts` | get, follow, unfollow |
 | `api/TagsApi.ts` | getAll |
-| `helpers.ts` | `createAuthContext()`, `uniqueId()`, `generateEmail()`, and the shared constants |
+| `env.ts` | `requiredEnv()` — the one env-var reader. Its own module so `playwright.config.ts` can guard `baseURL` without importing the rest of `helpers.ts` |
+| `helpers.ts` | `createAuthContext()`, `cleanup()`, `uniqueId()`, `generateEmail()`, and the five env constants — each read through `requiredEnv()` at load, so a missing one names itself instead of failing later as `Invalid URL` |
 | `types.ts` | Shared types: `Article`, `Author`, `Comment`, `Profile`, `User` |
 | `schemas.ts` | The zod schemas used by `schema.spec.ts` and `error-response.spec.ts` |
 

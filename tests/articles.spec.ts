@@ -246,7 +246,8 @@ test.describe('Articles — Authenticated endpoints', () => {
     if (createdSlug) {
       await cleanup(`article ${createdSlug}`, () => api.delete(createdSlug));
     }
-    await authCtx.dispose();
+    // `?.` so a failed beforeAll reports its own error, not a second TypeError here.
+    await authCtx?.dispose();
   });
 
   test('POST /api/articles — creates a new article', async () => {
