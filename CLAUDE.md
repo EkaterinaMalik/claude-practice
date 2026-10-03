@@ -106,6 +106,28 @@ spec would cost more than the exception does. Leave it.
 `.json()` parses it without throwing. It is the discarded body that makes the exception necessary,
 not a parse error. An earlier version of this section said otherwise and was wrong.)
 
+### Environment variables
+
+Five variables drive the suite: `API_BASE_URL`, `TEST_PASSWORD`, `TEST_NEW_PASSWORD`,
+`TEST_AVATAR_URL`, `TEST_EMAIL_DOMAIN`. Locally they come from `.env`, which is gitignored — copy
+`.env.example`. In CI they come from repository Variables and Secrets, see `CI_SETUP.md`.
+
+All five are read through `requiredEnv()` in `support/env.ts`. A missing one throws at load time and
+names both the variable and where to set it.
+
+They used to be `process.env.X!`. That `!` is a TypeScript assertion and is erased when the code
+runs, so it checked nothing. A missing value became `undefined` and surfaced later as
+`TypeError: apiRequestContext.get: Invalid URL` — an error pointing at the request code instead of
+the cause.
+
+`requiredEnv` lives in its own module, not in `helpers.ts`. That lets `playwright.config.ts` use it
+for `baseURL` without pulling in the rest of the helpers. Keep it that way: `env.ts` runs nothing at
+import time, so the config can import it above its own `dotenv.config()` call. Without the config
+guard, running a spec that does not import `helpers.ts` — `tags.spec.ts` is the only one — still
+produced the old `Invalid URL`.
+
+`process.env.CI` is deliberately not read through `requiredEnv`. It is optional: absent means local.
+
 ### Key constraints discovered from the live API
 
 - **Username max length: 20 characters.** Use `uniqueId()` — last 10 digits of timestamp + 3-char random suffix — to generate usernames that fit: `u_${uniqueId()}` = 14 chars max.
@@ -240,7 +262,7 @@ So: **when you change a file, check the doc that describes it, in the same chang
 | If you change... | Re-check | Look at |
 |---|---|---|
 | `tests/*.spec.ts` | `TEST_RECOMMENDATIONS.md`, `PROJECT_FILES.md` | coverage lists, Remaining Work table, test count and audit date; and the per-spec test counts in the file map |
-| `support/api/*`, `helpers.ts`, `types.ts`, `schemas.ts` | `CLAUDE.md`, `PROJECT_FILES.md` | Architecture — Layer separation, Auth pattern; and the method lists in the file map |
+| `support/api/*`, `helpers.ts`, `env.ts`, `types.ts`, `schemas.ts` | `CLAUDE.md`, `PROJECT_FILES.md` | Architecture — Layer separation, Environment variables, Auth pattern; and the method lists in the file map |
 | `package.json`, `playwright.config.ts` | `CLAUDE.md`, `PROJECT_FILES.md` | Commands, Reporting; and the script list in the file map |
 | `docker-compose.yml`, `docker/` | `CLAUDE.md`, `PROJECT_FILES.md` | the Allure viewer and container sections; and the config table in the file map |
 | `.github/workflows/` | `CI_SETUP.md` | workflow steps and permissions |
