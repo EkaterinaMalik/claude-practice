@@ -2,19 +2,22 @@
 
 [![API Tests](https://github.com/EkaterinaMalik/claude-practice/actions/workflows/api-tests.yml/badge.svg)](https://github.com/EkaterinaMalik/claude-practice/actions/workflows/api-tests.yml)
 
-An API test suite built the way a suite has to be built to survive: **72 tests that run in parallel in any order**, each creating its own data and cleaning up after itself, against a live third-party server that cannot be reset between runs.
+**The hard part is the target.** The API under test is live, public and shared. There is no database to reset. There is no fixture to seed. Anything a test creates is visible to the rest of the suite.
 
-Written in Playwright and TypeScript. The whole suite finishes in about 15 seconds — these are pure API tests, so no browser is ever launched and no browser binaries are downloaded.
+So every test here stands alone. It registers its own user. It creates its own data. It removes that data again, and it says so when removal fails. That is what makes **72 tests safe to run at once, in any order**.
 
-What it demonstrates:
+Playwright and TypeScript. A full run takes about 15 seconds. No browser is launched, so no browser binaries are downloaded.
 
-- **Test independence under real conditions.** Every test registers a throwaway user. Nothing is shared, nothing is ordered, `fullyParallel` is on.
-- **Validation that runs, not just compiles.** TypeScript types vanish at runtime, so every response shape is checked again with zod against what the server actually sent.
-- **Failures that point at the cause.** Cleanup problems are reported rather than swallowed, a missing environment variable names itself, and a known server bug is pinned with `test.fail()` so it starts failing the day it is fixed.
-- **Reporting and CI as part of the suite, not an afterthought.** Four reporters from one run, Allure viewable with nothing installed but Docker, and GitHub Actions publishing a check run on every push and pull request.
-- **Server quirks documented, not worked around.** The target is a public demo API with real oddities; each one is written down with the test that pins it.
+Design decisions worth a look:
 
-The system under test is [Conduit](https://conduit-api.bondaracademy.com), the RealWorld reference backend — articles, comments, profiles and auth.
+- **Independence is enforced, not hoped for.** Every test registers a throwaway user. Nothing is shared. Nothing depends on order. `fullyParallel` is on.
+- **Types are checked twice.** TypeScript checks the code before it runs. zod checks the server's real answer while it runs.
+- **Failures name their own cause.** A failed cleanup is reported, never swallowed. A missing environment variable says which one. A known server bug is pinned with `test.fail()`, so it turns red the day the server is fixed.
+- **Reporting and CI are part of the suite.** Four reporters from one run. GitHub Actions publishes a check run on every push and pull request.
+- **Docker removes prerequisites.** One image renders the Allure report, so reading it needs no Java. Another runs the suite, so a machine needs no Node.
+- **Server quirks are written down.** This server has real oddities. Each one sits next to the test that pins it.
+
+The system under test is [Conduit](https://conduit-api.bondaracademy.com), the RealWorld reference backend: articles, comments, profiles, auth.
 
 ## Quick start
 
@@ -26,7 +29,7 @@ cp .env.example .env     # the defaults work as-is; .env is gitignored
 npm test
 ```
 
-Node 22 is expected. If a variable is missing, the suite stops immediately and names it rather than failing later with a confusing `Invalid URL`.
+Node 22 is expected. If a variable is missing, the suite stops at once and names it. No confusing `Invalid URL` later.
 
 ## What is covered
 
@@ -42,7 +45,7 @@ Node 22 is expected. If a variable is missing, the suite stops immediately and n
 | `tags.spec.ts` | 3 | Tag list and tag filtering |
 | `e2e-flow.spec.ts` | 1 | One full social flow, register through cleanup |
 
-Every test creates its own throwaway user and cleans up after itself, so the suite runs fully in parallel in any order.
+Every test creates its own throwaway user and cleans up after itself. That is what lets the suite run fully in parallel, in any order.
 
 ## Running
 
@@ -64,13 +67,38 @@ npm run allure:serve              # Allure report — needs Java and the Allure 
 npm run allure:docker             # same report from a container, no Java needed → localhost:5252
 ```
 
-`allure-results/` is cleared before each `npm test` by a `pretest` hook, so a report never mixes two runs.
+A `pretest` hook clears `allure-results/` before each `npm test`. So a report never mixes two runs.
+
+## Docker
+
+Two images, defined in `docker-compose.yml`. Neither running the suite nor reading the report depends on what is installed on the machine.
+
+| Service | Image | Does |
+|---|---|---|
+| `allure` | `eclipse-temurin:21-jre` + Allure CLI 2.36.0 | Renders the report. Allure needs Java. This way you need only Docker. |
+| `tests` | `node:22-slim` | Runs the suite. No local Node needed. |
+
+```bash
+npm run allure:docker        # serve the report at localhost:5252
+npm run allure:docker:build  # write allure-report/ to disk and exit
+npm run test:docker          # run the whole suite in a container
+npm run test:docker -- tests/auth.spec.ts   # ...or one spec
+```
+
+Four decisions matter more than the commands:
+
+- **Both run as you, not root.** Set by `user: "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"`, fed from `id -u`. A container is root by default. Files it writes then need `sudo` to delete.
+- **Results are mounted read-only.** The viewer only renders them. It never writes. So it cannot.
+- **The Allure version is pinned, and the pin is load-bearing.** Newer releases refuse to serve on anything but localhost. A container cannot use that. Checked against 2.46.0, which exits with `` `allure serve` is intended for local report preview only ``. The version is a build arg, so testing a bump takes one command.
+- **No Playwright browser image.** No test opens a browser. `node:22-slim` plus `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` is enough. That saves about 1.5 GB.
+
+Dependencies are baked into the test image. The repo is mounted at run time. So editing a spec needs no rebuild.
 
 ## Continuous integration
 
-GitHub Actions runs the suite on every push and pull request to `master`, and on demand from the Actions tab. Results appear as a check run on the commit; the HTML report and raw Allure results are attached to each run for 7 days.
+GitHub Actions runs the suite on every push and pull request to `master`. It can also be run on demand from the Actions tab. Results appear as a check run on the commit. The HTML report and the raw Allure results are attached to each run, kept for 7 days.
 
-Configuration lives in repository Variables, credentials in Secrets — see [CI_SETUP.md](CI_SETUP.md).
+Configuration lives in repository Variables. Credentials live in Secrets. See [CI_SETUP.md](CI_SETUP.md).
 
 ## Layout
 
@@ -87,11 +115,11 @@ docker/          images for the test runner and the Allure viewer
 
 ## Notes on the target API
 
-It is a public demo server with real quirks, and the tests document them rather than work around them:
+It is a public demo server with real quirks. The tests document them rather than work around them:
 
-- Anonymous reads only ever return the pre-seeded data. Authenticate whenever a test needs to see its own writes, or a loop can iterate zero times and pass while checking nothing.
+- Anonymous reads only ever return the pre-seeded data. Authenticate whenever a test needs to see its own writes. Otherwise a loop can run zero times and pass while checking nothing.
 - Login returns **403**, not 422, for wrong credentials.
-- `GET /api/articles?offset=-1` returns a 500 with raw internals. That is tracked by a `test.fail()` test, which will start failing — correctly — the day the server is fixed.
+- `GET /api/articles?offset=-1` returns a 500 with raw internals. A `test.fail()` test tracks it. The day the server is fixed, that test starts failing — correctly.
 - Usernames are capped at 20 characters.
 
 Full list in [CLAUDE.md](CLAUDE.md).
