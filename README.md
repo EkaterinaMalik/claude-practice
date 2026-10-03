@@ -4,13 +4,13 @@
 
 **The hard part is the target.** The API under test is live, public and shared. There is no database to reset. There is no fixture to seed. Anything a test creates is visible to the rest of the suite.
 
-So every test here stands alone. It registers its own user. It creates its own data. It removes that data again, and it says so when removal fails. That is what makes **72 tests safe to run at once, in any order**.
+So no test depends on another. A spec file registers one throwaway user and shares it for read-only work. Any test that changes user state registers its own. Each test removes what it made, and says so when removal fails. That is what makes **72 tests safe to run at once, in any order**.
 
 Playwright and TypeScript. A full run takes about 15 seconds. No browser is launched, so no browser binaries are downloaded.
 
 Design decisions worth a look:
 
-- **Independence is enforced, not hoped for.** Every test registers a throwaway user. Nothing is shared. Nothing depends on order. `fullyParallel` is on.
+- **Independence is enforced, not hoped for.** Users are throwaway and never reused across spec files. Nothing depends on order. `fullyParallel` is on.
 - **Types are checked twice.** TypeScript checks the code before it runs. zod checks the server's real answer while it runs.
 - **Failures name their own cause.** A failed cleanup is reported, never swallowed. A missing environment variable says which one. A known server bug is pinned with `test.fail()`, so it turns red the day the server is fixed.
 - **Reporting and CI are part of the suite.** Four reporters from one run. GitHub Actions publishes a check run on every push and pull request.
@@ -45,7 +45,7 @@ Node 22 is expected. If a variable is missing, the suite stops at once and names
 | `tags.spec.ts` | 3 | Tag list and tag filtering |
 | `e2e-flow.spec.ts` | 1 | One full social flow, register through cleanup |
 
-Every test creates its own throwaway user and cleans up after itself. That is what lets the suite run fully in parallel, in any order.
+No test reads data made by another. A run registers 22 throwaway users for 72 tests: one shared per spec file where tests only read, plus a dedicated one for every test that changes user state.
 
 ## Running
 
