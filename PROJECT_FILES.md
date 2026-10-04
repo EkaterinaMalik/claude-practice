@@ -82,9 +82,10 @@ Five more `.md` files live in `.claude/commands/`. They are slash commands, not 
 
 | File | What it does |
 |---|---|
-| `package.json` | Dependencies, and 14 npm scripts |
+| `package.json` | Dependencies, and 15 npm scripts |
 | `package-lock.json` | Exact dependency versions. `npm ci` uses it, and the Docker image caches on it — do not edit by hand |
 | `playwright.config.ts` | One project named `api`, no browser, `fullyParallel: true`, reporters |
+| `tsconfig.json` | Type checking only (`noEmit`). Playwright does not use it to run tests — esbuild strips types without checking them, so this is the only thing that verifies them |
 | `.env` | Real values. **Not in git.** |
 | `.env.example` | The same keys with safe placeholder values. In git — copy it to make your `.env` |
 | `.github/workflows/api-tests.yml` | Runs the suite on GitHub after a push |
@@ -95,6 +96,7 @@ Five more `.md` files live in `.claude/commands/`. They are slash commands, not 
 
 ### The npm scripts
 
+Check types: `typecheck` — `tsc --noEmit`, runs no tests
 Run one spec: `test:auth`, `test:articles`, `test:comments`, `test:tags`, `test:profiles`
 Run everything: `test` — `pretest` clears old Allure results first
 In Docker: `test:docker`

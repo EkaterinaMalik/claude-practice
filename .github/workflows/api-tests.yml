@@ -41,6 +41,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Runs before the suite on purpose: a few seconds, and it fails fast on a type
+      # error rather than after a full run against the live API.
+      - name: Typecheck
+        run: npm run typecheck
+
       - name: Run Playwright tests
         run: npx playwright test
 

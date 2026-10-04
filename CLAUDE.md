@@ -5,6 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
+npm run typecheck               # tsc --noEmit — types only, runs nothing
 npm test                        # run all tests (writes HTML + Allure results, per config)
 npm run test:auth               # run a single suite
 npm run test:articles
@@ -127,6 +128,22 @@ guard, running a spec that does not import `helpers.ts` — `tags.spec.ts` is th
 produced the old `Invalid URL`.
 
 `process.env.CI` is deliberately not read through `requiredEnv`. It is optional: absent means local.
+
+### Type checking
+
+`npm run typecheck` runs `tsc --noEmit` over `tests/`, `support/` and `playwright.config.ts`. CI runs
+it **before** the suite, so a type error fails in seconds instead of after a full run against the live
+API.
+
+This is not automatic. Playwright transpiles TypeScript with esbuild, which *strips* types and never
+checks them — a file can be plainly wrong and still run. Nothing checked types here until 2026-10-04.
+
+`tsconfig.json` uses `"module": "preserve"`, which implies bundler-style resolution. That matches how
+esbuild actually resolves imports, and it is what TypeScript 7 accepts — the older `moduleResolution:
+"node"` has been removed. `noEmit` means it only checks; Playwright still runs the files its own way.
+
+The baseline is clean. Keep it that way: if a change makes `tsc` complain, fix the types rather than
+reaching for `any` or `@ts-ignore`.
 
 ### Key constraints discovered from the live API
 
