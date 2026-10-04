@@ -55,6 +55,7 @@ parsed, typed fields instead. See `CLAUDE.md`, Layer separation. Leave them alon
 | `api/CommentsApi.ts` | list, create, delete |
 | `api/ProfilesApi.ts` | get, follow, unfollow |
 | `api/TagsApi.ts` | getAll |
+| `api/unwrap.ts` | `unwrap()` — pulls the payload out of a response envelope and fails with a clear message if the key is missing on a 2xx. Shared by all five API classes |
 | `env.ts` | `requiredEnv()` — the one env-var reader. Its own module so `playwright.config.ts` can guard `baseURL` without importing the rest of `helpers.ts` |
 | `helpers.ts` | `createAuthContext()`, `cleanup()`, `uniqueId()`, `generateEmail()`, and the five env constants — each read through `requiredEnv()` at load, so a missing one names itself instead of failing later as `Invalid URL` |
 | `types.ts` | Shared types: `Article`, `Author`, `Comment`, `Profile`, `User` |

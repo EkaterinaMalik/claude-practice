@@ -1,5 +1,6 @@
 import { APIRequestContext } from '@playwright/test';
 import { Article } from '../types';
+import { unwrap } from './unwrap';
 
 export interface CreateArticleInput {
   title: string;
@@ -52,13 +53,22 @@ export class ArticlesApi {
     const qs = query.toString();
     const response = await this.request.get(`/api/articles${qs ? `?${qs}` : ''}`);
     const body = await response.json();
-    return { status: response.status(), articles: body.articles, articlesCount: body.articlesCount };
+
+    return { 
+      status: response.status(), 
+      articles: unwrap(body, 'articles', response.status()), 
+      articlesCount: unwrap(body, 'articlesCount', response.status()) 
+    };
   }
 
   async getBySlug(slug: string): Promise<ArticleResult> {
     const response = await this.request.get(`/api/articles/${slug}`);
     const body = await response.json();
-    return { status: response.status(), article: body.article };
+
+    return { 
+      status: response.status(),
+      article: unwrap(body, 'article', response.status()) 
+    };
   }
 
   async create(data: CreateArticleInput): Promise<ArticleResult> {
@@ -77,24 +87,28 @@ export class ArticlesApi {
     // type: interface 'ArticleResult'
     return {
       status: response.status(),
-      article: body.article,
+      article: unwrap(body, 'article', response.status()),
       errors: body.errors
     };
   }
 
   async update(slug: string, data: UpdateArticleInput): Promise<ArticleResult> {
     const response = await this.request.put(`/api/articles/${slug}`, {
-      data: { article: data },
+      data: { 
+        article: data 
+      },
     });
     const body = await response.json();
+
     return { 
       status: response.status(),
-      article: body.article 
+      article: unwrap(body, 'article', response.status()) 
     };
   }
 
   async delete(slug: string): Promise<{ status: number }> {
     const response = await this.request.delete(`/api/articles/${slug}`);
+
     return { 
       status: response.status() 
     };
@@ -103,16 +117,21 @@ export class ArticlesApi {
   async favorite(slug: string): Promise<ArticleResult> {
     const response = await this.request.post(`/api/articles/${slug}/favorite`);
     const body = await response.json();
+
     return { 
       status: response.status(),
-       article: body.article 
+      article: unwrap(body, 'article', response.status()) 
     };
   }
 
   async unfavorite(slug: string): Promise<ArticleResult> {
     const response = await this.request.delete(`/api/articles/${slug}/favorite`);
     const body = await response.json();
-    return { status: response.status(), article: body.article };
+
+    return { 
+      status: response.status(), 
+      article: unwrap(body, 'article', response.status()) 
+    };
   }
 
   async getFeed(params?: FeedParams): Promise<ListArticlesResult> {
@@ -122,10 +141,11 @@ export class ArticlesApi {
     const qs = query.toString();
     const response = await this.request.get(`/api/articles/feed${qs ? `?${qs}` : ''}`);
     const body = await response.json();
+
     return { 
       status: response.status(),
-      articles: body.articles, 
-      articlesCount: body.articlesCount 
+      articles: unwrap(body, 'articles', response.status()), 
+      articlesCount: unwrap(body, 'articlesCount', response.status()) 
     };
   }
 }
