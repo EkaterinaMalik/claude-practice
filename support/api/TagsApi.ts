@@ -1,4 +1,5 @@
 import { APIRequestContext } from '@playwright/test';
+import { unwrap } from './unwrap';
 
 export interface TagsResult {
   status: number;
@@ -11,6 +12,10 @@ export class TagsApi {
   async getAll(): Promise<TagsResult> {
     const response = await this.request.get('/api/tags');
     const body = await response.json();
-    return { status: response.status(), tags: body.tags };
+
+    return { 
+      status: response.status(), 
+      tags: unwrap(body, 'tags', response.status()) 
+    };
   }
 }

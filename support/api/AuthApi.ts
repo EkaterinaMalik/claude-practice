@@ -1,5 +1,6 @@
 import { APIRequestContext } from '@playwright/test';
 import { User } from '../types';
+import { unwrap } from './unwrap';
 
 export interface RegisterInput {
   username: string;
@@ -32,10 +33,17 @@ export class AuthApi {
 
   async register(data: RegisterInput): Promise<AuthResult> {
     const response = await this.request.post('/api/users', {
-      data: { user: data },
+      data: { 
+        user: data 
+      },
     });
     const body = await response.json();
-    return { status: response.status(), user: body.user, errors: body.errors };
+
+    return { 
+      status: response.status(), 
+      user: unwrap(body, 'user', response.status()), 
+      errors: body.errors
+    };
   }
 
   async login(data: LoginInput): Promise<AuthResult> {
@@ -43,15 +51,21 @@ export class AuthApi {
       data: { user: data },
     });
     const body = await response.json();
-    return { status: response.status(), user: body.user, errors: body.errors };
+
+    return { 
+      status: response.status(), 
+      user: unwrap(body, 'user', response.status()), 
+      errors: body.errors 
+    };
   }
 
   async getCurrentUser(): Promise<AuthResult> {
     const response = await this.request.get('/api/user');
     const body = await response.json();
+
     return {
-       status: response.status(), 
-       user: body.user 
+      status: response.status(), 
+      user: unwrap(body, 'user', response.status()) 
     };
   }
 
@@ -60,6 +74,11 @@ export class AuthApi {
       data: { user: data },
     });
     const body = await response.json();
-    return { status: response.status(), user: body.user, errors: body.errors };
+
+    return { 
+      status: response.status(), 
+      user: unwrap(body, 'user', response.status()), 
+      errors: body.errors 
+    };
   }
 }

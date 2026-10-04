@@ -83,7 +83,7 @@ The project follows a two-layer model:
 
 | Layer | Location | Role |
 |-------|----------|------|
-| API classes | `support/api/` | Wrap raw HTTP calls; own typed input/output interfaces |
+| API classes | `support/api/` | Wrap raw HTTP calls; own typed input/output interfaces. All read their payload through `unwrap()` (`support/api/unwrap.ts`), which fails with a clear message if a 2xx response is missing its envelope key — `body.tags` going quietly `undefined` used to surface far away as `Expected array, received undefined`. Non-2xx bodies carry `errors` and no payload key, so they are skipped |
 | Spec files | `tests/` | Assertions only; call API classes, not `request.post/get` (one documented exception below) |
 | Shared models | `support/types.ts` | Domain types shared across API classes (`Article`, `Author`) |
 
@@ -105,6 +105,28 @@ spec would cost more than the exception does. Leave it.
 (Note: the `offset=-1` 500 body *is* valid JSON — a JSON string containing the Prisma text — so
 `.json()` parses it without throwing. It is the discarded body that makes the exception necessary,
 not a parse error. An earlier version of this section said otherwise and was wrong.)
+
+### Environment variables
+
+Five variables drive the suite: `API_BASE_URL`, `TEST_PASSWORD`, `TEST_NEW_PASSWORD`,
+`TEST_AVATAR_URL`, `TEST_EMAIL_DOMAIN`. Locally they come from `.env`, which is gitignored — copy
+`.env.example`. In CI they come from repository Variables and Secrets, see `CI_SETUP.md`.
+
+All five are read through `requiredEnv()` in `support/env.ts`. A missing one throws at load time and
+names both the variable and where to set it.
+
+They used to be `process.env.X!`. That `!` is a TypeScript assertion and is erased when the code
+runs, so it checked nothing. A missing value became `undefined` and surfaced later as
+`TypeError: apiRequestContext.get: Invalid URL` — an error pointing at the request code instead of
+the cause.
+
+`requiredEnv` lives in its own module, not in `helpers.ts`. That lets `playwright.config.ts` use it
+for `baseURL` without pulling in the rest of the helpers. Keep it that way: `env.ts` runs nothing at
+import time, so the config can import it above its own `dotenv.config()` call. Without the config
+guard, running a spec that does not import `helpers.ts` — `tags.spec.ts` is the only one — still
+produced the old `Invalid URL`.
+
+`process.env.CI` is deliberately not read through `requiredEnv`. It is optional: absent means local.
 
 ### Key constraints discovered from the live API
 
@@ -136,10 +158,14 @@ Tests that need an authenticated context register + login a new user in `beforeA
 test, then dispose the context in `afterAll`. There is no saved auth state — this is what keeps the suite
 parallel-safe.
 
-The helper is `createAuthContext(playwright)` in `support/helpers.ts`, used by eight of the nine specs
-(`tags.spec.ts` needs no auth). Call it rather than building an authenticated context by hand. Wrapping it
-as a Playwright fixture in `support/fixtures.ts` has been floated but not built, and the helper is doing
-the job — treat a fixture as optional polish, not pending work.
+The helper is `createAuthContext()` in `support/helpers.ts` — no arguments since #9 — and seven of the
+nine specs use it. The two that do not: `tags.spec.ts` needs no auth at all, and `auth.spec.ts` builds
+its own contexts on purpose, because it is testing the registration and login flow the helper depends
+on. Everywhere else, call the helper rather than building a context by hand. Wrapping it
+as a Playwright fixture has been floated but never built: **there is no `support/fixtures.ts` in this
+repo**, and nothing imports one. The helper does the job, so treat a fixture as optional polish rather
+than pending work. (The path is named here only so the idea is searchable — do not go looking for the
+file.)
 
 `createAuthContext` **fails fast and loudly**. It asserts 201 on register and 200 on login, and checks a
 token came back, throwing a message that names the function, the username, the expected and actual status,
@@ -240,7 +266,7 @@ So: **when you change a file, check the doc that describes it, in the same chang
 | If you change... | Re-check | Look at |
 |---|---|---|
 | `tests/*.spec.ts` | `TEST_RECOMMENDATIONS.md`, `PROJECT_FILES.md` | coverage lists, Remaining Work table, test count and audit date; and the per-spec test counts in the file map |
-| `support/api/*`, `helpers.ts`, `types.ts`, `schemas.ts` | `CLAUDE.md`, `PROJECT_FILES.md` | Architecture — Layer separation, Auth pattern; and the method lists in the file map |
+| `support/api/*`, `helpers.ts`, `env.ts`, `types.ts`, `schemas.ts` | `CLAUDE.md`, `PROJECT_FILES.md` | Architecture — Layer separation, Environment variables, Auth pattern; and the method lists in the file map |
 | `package.json`, `playwright.config.ts` | `CLAUDE.md`, `PROJECT_FILES.md` | Commands, Reporting; and the script list in the file map |
 | `docker-compose.yml`, `docker/` | `CLAUDE.md`, `PROJECT_FILES.md` | the Allure viewer and container sections; and the config table in the file map |
 | `.github/workflows/` | `CI_SETUP.md` | workflow steps and permissions |

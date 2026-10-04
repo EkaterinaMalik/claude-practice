@@ -1,5 +1,6 @@
 import { APIRequestContext } from '@playwright/test';
 import { Comment } from '../types';
+import { unwrap } from './unwrap';
 
 export interface AddCommentResult {
   status: number;
@@ -18,7 +19,11 @@ export class CommentsApi {
   async list(slug: string): Promise<ListCommentsResult> {
     const response = await this.request.get(`/api/articles/${slug}/comments`);
     const body = await response.json();
-    return { status: response.status(), comments: body.comments };
+
+    return { 
+      status: response.status(), 
+      comments: unwrap(body, 'comments', response.status()) 
+    };
   }
 
   async create(slug: string, body?: string): Promise<AddCommentResult> {
@@ -26,11 +31,19 @@ export class CommentsApi {
       data: { comment: { body } },
     });
     const res = await response.json();
-    return { status: response.status(), comment: res.comment, errors: res.errors };
+
+    return { 
+      status: response.status(), 
+      comment: unwrap(res, 'comment', response.status()), 
+      errors: res.errors 
+    };
   }
 
   async delete(slug: string, id: number): Promise<{ status: number }> {
     const response = await this.request.delete(`/api/articles/${slug}/comments/${id}`);
-    return { status: response.status() };
+    
+    return { 
+      status: response.status() 
+    };
   }
 }
