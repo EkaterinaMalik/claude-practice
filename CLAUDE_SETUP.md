@@ -93,19 +93,30 @@ of this file. If the hook disappears, follow the rule anyway.
 **One known limit:** for a Bash command it reads only the first line. A long heredoc that *writes
 about* file paths used to set it off by mistake. Writing a doc is not the same as changing code.
 
-## 4. Memory — six files
+## 4. Memory
 
-Stored in `~/.claude/projects/-home-kateryna-Projects-Claude-project/memory/`.
-`MEMORY.md` in that folder is the index. Claude reads the index at the start of a session.
+Stored in `~/.claude/projects/-home-kateryna-Projects-Claude-project/memory/`, one file per
+remembered fact, with `MEMORY.md` as the index. Claude reads the index at the start of a session.
 
-| File | Holds |
+Four kinds, by the `type` in each file's front matter:
+
+| Type | Holds |
 |------|-------|
-| `user-kateryna.md` | Your role and working style |
-| `feedback-plain-english.md` | Write in short, simple sentences |
-| `feedback-no-trailing-summary.md` | No "here is what changed" summaries at the end |
-| `project-conduit-api-tests.md` | State of this project: architecture, coverage, server quirks |
-| `project-docker-test-run-deferred.md` | The containerized test run (`npm run test:docker`) |
-| `hook-test-recommendations-staleness.md` | Why the hook above exists |
+| `user` | Who you are — role, preferences, working style |
+| `feedback` | How you want Claude to work: plain English, ask before committing, no trailing summaries |
+| `project` | State of ongoing work — this project's architecture, coverage and server quirks live here |
+| `reference` | Pointers to external things, and to tooling that took effort to work out |
+
+To see what is actually stored:
+
+```bash
+cat ~/.claude/projects/-home-kateryna-Projects-Claude-project/memory/MEMORY.md
+```
+
+**Deliberately not listed file by file.** An inventory here goes stale the moment a memory is
+added or renamed — it already had, naming a file that has since been renamed. The folder also
+holds memories from unrelated work, and this repository is **public**, so its contents should not
+be enumerated in a committed file. Read the index instead; it is always current.
 
 Memory is personal to you and this machine. It is not shared and not in git.
 

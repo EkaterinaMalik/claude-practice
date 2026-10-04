@@ -83,7 +83,7 @@ The project follows a two-layer model:
 
 | Layer | Location | Role |
 |-------|----------|------|
-| API classes | `support/api/` | Wrap raw HTTP calls; own typed input/output interfaces |
+| API classes | `support/api/` | Wrap raw HTTP calls; own typed input/output interfaces. All read their payload through `unwrap()` (`support/api/unwrap.ts`), which fails with a clear message if a 2xx response is missing its envelope key — `body.tags` going quietly `undefined` used to surface far away as `Expected array, received undefined`. Non-2xx bodies carry `errors` and no payload key, so they are skipped |
 | Spec files | `tests/` | Assertions only; call API classes, not `request.post/get` (one documented exception below) |
 | Shared models | `support/types.ts` | Domain types shared across API classes (`Article`, `Author`) |
 
@@ -158,10 +158,14 @@ Tests that need an authenticated context register + login a new user in `beforeA
 test, then dispose the context in `afterAll`. There is no saved auth state — this is what keeps the suite
 parallel-safe.
 
-The helper is `createAuthContext(playwright)` in `support/helpers.ts`, used by eight of the nine specs
-(`tags.spec.ts` needs no auth). Call it rather than building an authenticated context by hand. Wrapping it
-as a Playwright fixture in `support/fixtures.ts` has been floated but not built, and the helper is doing
-the job — treat a fixture as optional polish, not pending work.
+The helper is `createAuthContext()` in `support/helpers.ts` — no arguments since #9 — and seven of the
+nine specs use it. The two that do not: `tags.spec.ts` needs no auth at all, and `auth.spec.ts` builds
+its own contexts on purpose, because it is testing the registration and login flow the helper depends
+on. Everywhere else, call the helper rather than building a context by hand. Wrapping it
+as a Playwright fixture has been floated but never built: **there is no `support/fixtures.ts` in this
+repo**, and nothing imports one. The helper does the job, so treat a fixture as optional polish rather
+than pending work. (The path is named here only so the idea is searchable — do not go looking for the
+file.)
 
 `createAuthContext` **fails fast and loudly**. It asserts 201 on register and 200 on login, and checks a
 token came back, throwing a message that names the function, the username, the expected and actual status,
