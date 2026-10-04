@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "pretest": "rm -rf allure-results",
+    "typecheck": "tsc --noEmit",
     "test": "playwright test",
     "test:auth": "npm test -- tests/auth.spec.ts",
     "test:articles": "npm test -- tests/articles.spec.ts",
@@ -25,7 +26,8 @@
   "devDependencies": {
     "@playwright/test": "^1.60.0",
     "@types/node": "^25.9.3",
-    "allure-playwright": "^3.10.2"
+    "allure-playwright": "^3.10.2",
+    "typescript": "^7.0.2"
   },
   "directories": {
     "test": "tests"
