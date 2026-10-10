@@ -9,9 +9,22 @@ import {
   ArticleSchema,
   CommentSchema,
   UserSchema,
+  //!!! Added LoginUserSchema to validate login response shape, 
+  // which does not return `id` field.
+  LoginUserSchema,
   ProfileSchema,
   TagsSchema,
 } from '../support/schemas';
+
+// Why additional LoginUserSchema was added.
+// The three endpoints return different shapes:
+
+// POST /api/users        6 keys, with id
+// GET  /api/user         6 keys, with id
+// POST /api/users/login  5 keys, no id
+
+// So, required different schema for login endpoint, 
+// which does not return id field in response.
 
 test.describe('Schema validation — Response shape', () => {
   let authCtx: APIRequestContext;
@@ -111,7 +124,7 @@ test.describe('Schema validation — Response shape', () => {
     UserSchema.parse(user);
   });
 
-  test('POST /api/users/login — login response matches UserSchema', async ({ playwright }) => {
+  test('POST /api/users/login — login response matches LoginUserSchema (no id)', async ({ playwright }) => {
     const id = uniqueId();
     const email = generateEmail('lgn', id);
     let ctx: APIRequestContext;
@@ -129,7 +142,15 @@ test.describe('Schema validation — Response shape', () => {
     await test.step('Log in and validate response', async () => {
       const { status, user } = await api.login({ email, password: TEST_PASSWORD });
       expect(status).toBe(200);
-      UserSchema.parse(user);
+
+      // LoginUserSchema, not UserSchema: this endpoint alone omits `id`.
+      /// Why LoginUserSchema exists. The three endpoints return different shapes:
+
+      // POST /api/users        6 keys, with id
+      // GET  /api/user         6 keys, with id
+      // POST /api/users/login  5 keys, no id
+
+      LoginUserSchema.parse(user);
     });
 
     await test.step('Cleanup: dispose context', async () => {

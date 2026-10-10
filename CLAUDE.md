@@ -167,6 +167,13 @@ reaching for `any` or `@ts-ignore`.
   Authenticate whenever the test needs to see its own writes. Second, the anonymous article list is
   effectively **static**, so tests reading it are not racing the rest of the suite and articles
   leaked by a failing test cannot perturb them.
+- **The user envelope is not consistent.** `POST /api/users` and `GET /api/user` return a numeric
+  `id`. `POST /api/users/login` does not. Found 2026-10-10, when the zod schemas were made strict —
+  no schema had declared `id`, so nothing noticed. Hence two schemas: `UserSchema` with `id`, and
+  `LoginUserSchema` without.
+- **Both `Token` and `Bearer` auth schemes are accepted.** The RealWorld spec says
+  `Authorization: Token <jwt>`. Probed 2026-10-10: `Bearer <jwt>` also returns 200 on `GET /api/user`
+  and 201 on `POST /api/articles`. Do not write a test expecting 401 from `Bearer` — it will fail.
 - All tests register fresh throw-away users (`example.com` emails) — no shared credentials file.
 
 ### Auth pattern
