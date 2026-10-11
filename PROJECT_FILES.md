@@ -1,6 +1,6 @@
 # Every file in this project, and what it is for
 
-A complete map. Written 2026-09-19, when the suite had **72 tests in 9 spec files**.
+A complete map. Written 2026-09-19, last re-counted 2026-10-11, when the suite had **73 tests in 9 spec files**.
 
 Start here if you are not sure which file to open.
 
@@ -26,7 +26,7 @@ and `TEST_RECOMMENDATIONS.md` tracks what is missing from them.
 
 | File | Tests | Covers |
 |---|---|---|
-| `articles.spec.ts` | 26 | The biggest one. Public list and filters, pagination boundaries, auth protection, cross-user 403s, create / update / favourite / feed / delete, 422 validation, special characters. Holds one of the two expected failures |
+| `articles.spec.ts` | 27 | The biggest one. Public list and filters, pagination boundaries, auth protection, cross-user 403s, create / update / favourite / feed / delete, 422 validation, special characters. Holds one of the two expected failures |
 | `auth.spec.ts` | 9 | Register, login, get and update the current user, 401 without a token, 401 with a broken token |
 | `schema.spec.ts` | 9 | Runtime response-shape checks with zod, for articles, tags, profiles, users and comments |
 | `comments.spec.ts` | 7 | List, add, delete, 401 without auth, 422 on an empty body |

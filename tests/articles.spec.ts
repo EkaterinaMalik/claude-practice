@@ -2,7 +2,7 @@ import { test, expect, APIRequestContext } from '@playwright/test';
 import { ArticlesApi, CreateArticleInput } from '../support/api/ArticlesApi';
 import { TagsApi } from '../support/api/TagsApi';
 import { Article } from '../support/types';
-import { createAuthContext, uniqueId, cleanup } from '../support/helpers';
+import { createAuthContext, uniqueId, cleanup, API_BASE } from '../support/helpers';
 
 test.describe('Articles — Public endpoints', () => {
   test('GET /api/articles — returns articles list with default pagination', async ({ request }) => {
@@ -157,6 +157,37 @@ test.describe('Articles — Auth protection', () => {
       body: 'test',
     });
     expect(response.status()).toBe(401);
+  });
+
+  test('POST /api/articles — returns 401 for a malformed token', async ({ playwright }) => {
+    // auth.spec.ts covers a malformed token against a read (GET /api/user). A write is the case
+    // worth pinning separately: a server that waves one through here lets anyone create data.
+    // Probed 2026-10-11 — all four shapes return 401.
+    const malformed: Record<string, string> = {
+      'garbage after the scheme': 'Token not-a-real-token',
+      'scheme with no token': 'Token ',
+      'token with no scheme': 'not-a-real-token',
+      'truncated JWT': 'Token eyJhbGciOiJIUzI1NiJ9.truncated',
+    };
+
+    for (const [label, header] of Object.entries(malformed)) {
+      const ctx = await playwright.request.newContext({
+        baseURL: API_BASE,
+        extraHTTPHeaders: { 'Content-Type': 'application/json', Authorization: header },
+      });
+
+      try {
+        const response = await new ArticlesApi(ctx).createArticleRaw({
+          title: `Malformed token ${uniqueId()}`,
+          description: 'should never be created',
+          body: 'should never be created',
+        });
+        expect(response.status(), `${label} — a malformed token must not create an article`)
+          .toBe(401);
+      } finally {
+        await ctx.dispose();
+      }
+    }
   });
 
   test('GET /api/articles/feed — returns 401 without token', async ({ request }) => {
