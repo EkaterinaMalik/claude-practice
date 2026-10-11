@@ -84,8 +84,8 @@ The project follows a two-layer model:
 
 | Layer | Location | Role |
 |-------|----------|------|
-| API classes | `support/api/` | Wrap raw HTTP calls; own typed input/output interfaces. All read their payload through `unwrap()` (`support/api/unwrap.ts`), which fails with a clear message if a 2xx response is missing its envelope key — `body.tags` going quietly `undefined` used to surface far away as `Expected array, received undefined`. Non-2xx bodies carry `errors` and no payload key, so they are skipped |
-| Spec files | `tests/` | Assertions only; call API classes, not `request.post/get` (one documented exception below) |
+| API classes | `support/api/` | Wrap raw HTTP calls; own typed input/output interfaces. **Two methods per endpoint** — see below |
+| Spec files | `tests/` | Assertions only; call API classes, not `request.post/get` (three calls in `error-response.spec.ts` still do — see below) |
 | Shared models | `support/types.ts` | Domain types shared across API classes (`Article`, `Author`) |
 
 **Status:** complete. All five API classes (`ArticlesApi`, `AuthApi`, `CommentsApi`, `ProfilesApi`,
@@ -93,18 +93,69 @@ The project follows a two-layer model:
 should too — reach for an existing method, or add one to the relevant class, rather than calling
 `request.post/get` from a test.
 
-**One deliberate exception:** `tests/error-response.spec.ts` keeps three direct `request.*` calls, and
-should. It asserts on the *raw* response body — leak patterns via `response.text()`, and the exact
-`{ errors: … }` envelope the server sends — while the API classes exist precisely to parse that away.
-The reason is that the classes **discard the raw body**. They parse the response and return typed
-fields, so `response.text()` is gone by the time a caller sees the result — and the leak tests need
-exactly that text. The `ErrorSchema` test needs the whole `{ errors: … }` envelope, which
-`AuthApi.register()` splits into a field; rebuilding it would assert against our own reconstruction
-rather than what the server sent. Giving every class a raw-`APIResponse` escape hatch to serve one
-spec would cost more than the exception does. Leave it.
+#### A Raw method and a wrapper for every endpoint
+
+Which one you call says what kind of test you are writing:
+
+```typescript
+async getBySlugRaw(slug: string): Promise<APIResponse>   // negative tests
+async getBySlug(slug: string): Promise<Article>          // happy paths
+```
+
+- **`xxxRaw()` returns the response untouched.** It asserts nothing, so any status resolves
+  normally. Negative tests use it, because they want the status, the raw text and the
+  `{ errors: … }` envelope — everything a parsed payload has thrown away.
+- **`xxx()` is the wrapper.** It calls the Raw method, asserts the status that endpoint really
+  returns, and hands back the typed payload. Because the status is checked first the payload is
+  always there, so nothing downstream has to ask whether it exists.
+
+A spec therefore reads:
+
+```typescript
+// Happy path — create() asserts the 201 itself, so there is no status line here.
+const article = await api.createArticle({ title, description, body });
+expect(article.slug).toBeTruthy();
+
+// Negative path — Raw, because the wrapper would fail the test on the 422.
+const response = await api.createArticleRaw({ description, body } as CreateArticleInput);
+expect(response.status()).toBe(422);
+expect((await response.json()).errors).toBeDefined();
+```
+
+Two helpers do the shared work inside the wrappers:
+
+- **`expectStatus(response, expected)`** (`support/api/expectStatus.ts`) asserts the status and puts
+  the server's own words in the failure message. A bare `expect(status).toBe(201)` says only that the
+  number was wrong, while the body usually says why. It takes **no label**: the URL comes from
+  `response.url()`, so it cannot drift from the request that was really sent, and it arrives with the
+  query string attached. `APIResponse` carries no `method()` — Playwright does not attach the request
+  to it — so the verb is not in the message. The test name and the trace have it.
+- **`unwrap(body, key)`** (`support/api/unwrap.ts`) pulls the payload out of its envelope and throws
+  if the key is missing — `body.tags` going quietly `undefined` used to surface far away as
+  `Expected array, received undefined`. It runs only after `expectStatus` has passed, which is why it
+  has no status argument and no reason to tolerate an absent key.
+
+**Dig only when the payload is nested.** `GET /api/articles/:slug` returns `{ article: … }`, so
+`getBySlug` needs `unwrap`. `GET /api/articles` already returns `{ articles, articlesCount }`, so
+`getAll` returns `response.json()` as it stands — taking the two keys out and rebuilding the same
+object would be work for nothing.
+
+**Every method in this layer is `async`, the Raw ones included.** A Raw method is a one-line
+pass-through, so `async` plus `return await` buys it only a stack frame in a failure trace. They are
+written that way so no caller ever has to read a signature to decide whether to await. What tells you
+to await is the return type, `Promise<APIResponse>`, and `tsc` rejects a missing `await` —
+`Property 'status' does not exist on type 'Promise<APIResponse>'`.
+
+**The `error-response.spec.ts` exception has lost its reason.** That spec asserts on the *raw* body:
+leak patterns via `response.text()`, and the exact `{ errors: … }` envelope the server sends. Until
+the Raw methods existed, the API classes discarded the raw body — they parsed it and returned typed
+fields — so three direct `request.*` calls were the only way to get it, and this file argued they
+should stay. A Raw method returns the `APIResponse` itself, so that argument no longer holds. The
+three calls are still there; `registerRaw` would replace two and `getAllRaw` the third. Migrating
+them is open work, not a rule.
 
 (Note: the `offset=-1` 500 body *is* valid JSON — a JSON string containing the Prisma text — so
-`.json()` parses it without throwing. It is the discarded body that makes the exception necessary,
+`.json()` parses it without throwing. It was the discarded body that made the exception necessary,
 not a parse error. An earlier version of this section said otherwise and was wrong.)
 
 ### Environment variables
@@ -150,6 +201,12 @@ reaching for `any` or `@ts-ignore`.
 - **Username max length: 20 characters.** Use `uniqueId()` — last 10 digits of timestamp + 3-char random suffix — to generate usernames that fit: `u_${uniqueId()}` = 14 chars max.
 - **Login error code is 403**, not 422, for wrong credentials on this server (deviates from the RealWorld spec).
 - **`/api/articles/feed`** requires auth; returns an empty list for new users (they follow nobody).
+- **`limit=0` is ignored, not an empty page.** Probed 2026-10-11: `GET /api/articles?limit=0`
+  returns the full default page (all 10 seeded articles anonymously), because `0` is falsy on the
+  server and it falls back to its default. `limit=1` works, so only the falsy value is affected.
+  Treated as a server bug: `articles.spec.ts` asserts the empty page under `test.fail()`, so it
+  goes red the day the server agrees. (The RealWorld spec does not define `limit=0`, so this is a
+  judgement call rather than a spec violation — recorded here so the choice stays visible.)
 - **Anonymous reads only ever see the pre-seeded data.** This is the single most surprising thing
   about this server, and it has bitten the suite three separate ways:
 
@@ -206,7 +263,7 @@ Cleanup calls must not fail silently. A silent cleanup failure looks identical t
 CI output, and hides real problems — a resource that was never actually deleted leaks state into
 later runs. Use the `cleanup()` helper from `support/helpers.ts`:
 ```typescript
-await cleanup(`article ${article.slug}`, () => api.delete(article.slug));
+await cleanup(`article ${article.slug}`, () => api.deleteRaw(article.slug));
 ```
 
 **Do not go back to `.catch()`.** The obvious-looking pattern below was used here until 2026-09-20
@@ -217,21 +274,28 @@ await api.delete(article.slug).catch((error) => {
   console.warn('Cleanup failed:', error);
 });
 ```
-The API classes return `{ status }` and never throw on a non-2xx response, because Playwright's
-`failOnStatusCode` defaults to `false`. A 403 (wrong owner) or 404 resolves normally, so `.catch`
-never runs. Verified against the live server: a cross-user delete returned 403, the old pattern
-logged nothing, and the article was still there afterwards.
+A Raw method never throws on a non-2xx response, because Playwright's `failOnStatusCode` defaults
+to `false`. A 403 (wrong owner) or 404 resolves normally, so `.catch` never runs. Verified against
+the live server: a cross-user delete returned 403, the old pattern logged nothing, and the article
+was still there afterwards.
+
+**Pass the Raw method, not the wrapper.** `api.delete()` asserts its own 204 through `expect`, so
+using it for cleanup would turn a failed cleanup into a failed test — the exact thing `cleanup()`
+exists to prevent.
 
 `cleanup()` checks the status *and* catches throws, warns, and adds a `cleanup-failed` annotation
 so the problem appears in the HTML and Allure reports rather than only in stdout. It never
-rethrows — a cleanup problem must not mask the real test result. It works for anything returning
-`{ status }`, so use it for `unfavorite` and `unfollow` cleanups too, not just deletes.
+rethrows — a cleanup problem must not mask the real test result. Its action is
+`() => Promise<APIResponse>`, so use it for `unfavoriteRaw` and `unfollowRaw` cleanups too, not just
+deletes.
 
 ### TypeScript interfaces as test data structure
 Define TypeScript interfaces for all API request/response shapes in `support/api/` (e.g. `CreateArticleInput`, `UpdateArticleInput`). Use these interfaces to type all test data — they serve as living documentation of the expected shape and give compile-time safety. When intentionally sending incomplete data to test server-side validation, use an explicit `as InterfaceType` cast to make the violation visible and deliberate:
 ```typescript
-// Intentional: missing required field to verify 422
-await api.create({ description: 'No title', body: 'Some body.' } as CreateArticleInput);
+// Intentional: missing required field to verify 422.
+// Raw, because create() would assert 201 and fail the test before the assertion below.
+const response = await api.createArticleRaw({ description: 'No title', body: 'Some body.' } as CreateArticleInput);
+expect(response.status()).toBe(422);
 ```
 
 ### Known server bugs — use `test.fail()`
@@ -253,22 +317,24 @@ test('PUT /api/articles/:slug — updates all article attributes', async () => {
   let created: Article;
 
   await test.step('Create article to be updated', async () => {
-    const { article } = await api.create({ ... });
-    created = article;
+    created = await api.createArticle({ ... });
   });
 
   await test.step('Update article attributes', async () => {
-    const { status, article } = await api.update(created.slug, updates);
-    expect(status).toBe(200);
+    // update() asserts the 200 itself — assert on the payload instead.
+    const updated = await api.update(created.slug, updates);
+    expect(updated.title).toBe(updates.title);
+    // Changing the title changes the slug, so carry the new article forward.
+    created = updated;
   });
 
   await test.step('Verify changes persisted via a separate fetch', async () => {
-    const { article: fetched } = await api.getBySlug(created.slug);
+    const fetched = await api.getBySlug(created.slug);
     expect(fetched.title).toBe(updates.title);
   });
 
   await test.step('Cleanup: delete the article', async () => {
-    await api.delete(created.slug).catch(() => {});
+    await cleanup(`article ${created.slug}`, () => api.deleteRaw(created.slug));
   });
 });
 ```

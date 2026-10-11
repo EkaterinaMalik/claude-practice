@@ -37,30 +37,27 @@ test.describe('Schema validation — Response shape', () => {
     articlesApi = new ArticlesApi(authCtx);
     commentsApi = new CommentsApi(authCtx);
 
-    const { status, article } = await articlesApi.create({
+    // create() asserts the 201 and returns the article, so a failed setup fails here
+    // with the server's own message rather than later as an unrelated TypeError.
+    const article = await articlesApi.createArticle({
       title: `Schema test ${uniqueId()}`,
       description: 'Created for schema validation tests',
       body: 'Schema validation test article body.',
       tagList: [],
     });
-    // ArticleResult types `article` as non-optional, but it is undefined on a
-    // non-2xx. Without this check a failed setup surfaces later as "Cannot read
-    // properties of undefined", inside a test that looks unrelated.
-    expect(status, 'setup article was not created').toBe(201);
     articleSlug = article.slug;
   });
 
   test.afterAll(async () => {
     if (articleSlug) {
-      await cleanup(`article ${articleSlug}`, () => articlesApi.delete(articleSlug));
+      await cleanup(`article ${articleSlug}`, () => articlesApi.deleteRaw(articleSlug));
     }
     // `?.` so a failed beforeAll reports its own error, not a second TypeError here.
     await authCtx?.dispose();
   });
 
   test('GET /api/articles — each article matches ArticleSchema', async ({ request }) => {
-    const { status, articles } = await new ArticlesApi(request).getAll({ limit: 5 });
-    expect(status).toBe(200);
+    const { articles } = await new ArticlesApi(request).getAll({ limit: 5 });
     // Without this the loop below can validate nothing and still report green.
     expect(articles.length, 'no articles returned — the schema check would pass vacuously')
       .toBeGreaterThan(0);
@@ -70,14 +67,12 @@ test.describe('Schema validation — Response shape', () => {
   });
 
   test('GET /api/articles/:slug — single article matches ArticleSchema', async ({ request }) => {
-    const { status, article } = await new ArticlesApi(request).getBySlug(articleSlug);
-    expect(status).toBe(200);
+    const article = await new ArticlesApi(request).getBySlug(articleSlug);
     ArticleSchema.parse(article);
   });
 
   test('GET /api/tags — response matches TagsSchema', async ({ request }) => {
-    const { status, tags } = await new TagsApi(request).getAll();
-    expect(status).toBe(200);
+    const tags = await new TagsApi(request).getAll();
     TagsSchema.parse(tags);
   });
 
@@ -95,15 +90,13 @@ test.describe('Schema validation — Response shape', () => {
     });
 
     await test.step('Fetch and validate profile', async () => {
-      const { status, profile } = await new ProfilesApi(request).get(username);
-      expect(status).toBe(200);
+      const profile = await new ProfilesApi(request).get(username);
       ProfileSchema.parse(profile);
     });
   });
 
   test('GET /api/user — authenticated user matches UserSchema', async () => {
-    const { status, user } = await new AuthApi(authCtx).getCurrentUser();
-    expect(status).toBe(200);
+    const user = await new AuthApi(authCtx).getCurrentUser();
     UserSchema.parse(user);
   });
 
@@ -113,14 +106,13 @@ test.describe('Schema validation — Response shape', () => {
       baseURL: API_BASE,
       extraHTTPHeaders: { 'Content-Type': 'application/json' },
     });
-    const { status, user } = await new AuthApi(ctx).register({
+    const user = await new AuthApi(ctx).register({
       username: `u_${id}`,
       email: generateEmail('reg', id),
       password: TEST_PASSWORD,
     });
     await ctx.dispose();
 
-    expect(status).toBe(201);
     UserSchema.parse(user);
   });
 
@@ -140,8 +132,7 @@ test.describe('Schema validation — Response shape', () => {
     });
 
     await test.step('Log in and validate response', async () => {
-      const { status, user } = await api.login({ email, password: TEST_PASSWORD });
-      expect(status).toBe(200);
+      const user = await api.login({ email, password: TEST_PASSWORD });
 
       // LoginUserSchema, not UserSchema: this endpoint alone omits `id`.
       /// Why LoginUserSchema exists. The three endpoints return different shapes:
@@ -160,10 +151,10 @@ test.describe('Schema validation — Response shape', () => {
 
   test('GET /api/articles/:slug/comments — each comment matches CommentSchema', async ({ request }) => {
     await test.step('Add a comment', async () => {
-      // Checked, not discarded: if this write failed the list below comes back empty,
-      // the loop never runs, and the test reports green having validated nothing.
-      const { status } = await commentsApi.create(articleSlug, 'Comment for schema validation.');
-      expect(status).toBe(200);
+      // create() asserts its own status, so a failed write stops here. Without that the
+      // list below comes back empty, the loop never runs, and the test reports green
+      // having validated nothing.
+      await commentsApi.create(articleSlug, 'Comment for schema validation.');
     });
 
     await test.step('Validate each comment in the list', async () => {
@@ -171,8 +162,7 @@ test.describe('Schema validation — Response shape', () => {
       // empty comments array to unauthenticated callers, even for seeded articles, so
       // listing via the plain `request` fixture yields nothing and the loop below
       // validates nothing. See "Key constraints" in CLAUDE.md.
-      const { status, comments } = await commentsApi.list(articleSlug);
-      expect(status).toBe(200);
+      const comments = await commentsApi.list(articleSlug);
       expect(comments.length, 'no comments returned — the schema check would pass vacuously')
         .toBeGreaterThan(0);
       for (const comment of comments) {
@@ -182,8 +172,7 @@ test.describe('Schema validation — Response shape', () => {
   });
 
   test('POST /api/articles/:slug/comments — created comment matches CommentSchema', async () => {
-    const { status, comment } = await commentsApi.create(articleSlug, 'Schema test comment body.');
-    expect(status).toBe(200);
+    const comment = await commentsApi.create(articleSlug, 'Schema test comment body.');
     CommentSchema.parse(comment);
   });
 });

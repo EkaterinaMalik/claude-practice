@@ -7,9 +7,8 @@ import { createAuthContext, uniqueId, cleanup } from '../support/helpers';
 test.describe('Articles — Public endpoints', () => {
   test('GET /api/articles — returns articles list with default pagination', async ({ request }) => {
     const api = new ArticlesApi(request);
-    const { status, articles } = await api.getAll({ limit: 5 });
+    const { articles } = await api.getAll({ limit: 5 });
 
-    expect(status).toBe(200);
     expect(articles.length).toBeGreaterThan(0);
 
     const article = articles[0];
@@ -22,6 +21,9 @@ test.describe('Articles — Public endpoints', () => {
   test('GET /api/articles — supports limit and offset pagination', async ({ request }) => {
     const api = new ArticlesApi(request);
 
+    // Both calls assert their own 200 inside getAll(). Before the Raw/wrapper split
+    // neither status was checked here, so a 500 left both pages empty and the
+    // disjointness loop below compared nothing.
     const { articles: page1 } = await api.getAll({ limit: 2, offset: 0 });
     const { articles: page2 } = await api.getAll({ limit: 2, offset: 2 });
 
@@ -37,13 +39,12 @@ test.describe('Articles — Public endpoints', () => {
   });
 
   test('GET /api/articles — filters by tag', async ({ request }) => {
-    const { tags } = await new TagsApi(request).getAll();
+    const tags = await new TagsApi(request).getAll();
     const knownTag = tags[0];
 
     const api = new ArticlesApi(request);
-    const { status, articles } = await api.getAll({ tag: knownTag, limit: 5 });
+    const { articles } = await api.getAll({ tag: knownTag, limit: 5 });
 
-    expect(status).toBe(200);
     expect(articles.length).toBeGreaterThan(0);
     for (const article of articles) {
       expect(article.tagList).toContain(knownTag);
@@ -82,18 +83,16 @@ test.describe('Articles — Public endpoints', () => {
     let created: Article;
 
     await test.step('Create article as author', async () => {
-      const { article } = await authApi.create({
+      created = await authApi.createArticle({
         title: `PW Single ${uniqueId()}`,
         description: 'For single article fetch test',
         body: 'Single article test body.',
         tagList: [],
       });
-      created = article;
     });
 
     await test.step('Fetch article as public user', async () => {
-      const { status, article } = await new ArticlesApi(request).getBySlug(created.slug);
-      expect(status).toBe(200);
+      const article = await new ArticlesApi(request).getBySlug(created.slug);
       expect(article.slug).toBe(created.slug);
       expect(article.title).toBeTruthy();
       expect(article.body).toBeDefined();
@@ -104,7 +103,7 @@ test.describe('Articles — Public endpoints', () => {
       // we intentionally pass an invalid slug to cleanup to see if it handles errors
       //  gracefully.
       //await cleanup(`article ${created.slug}`, () => authApi.delete(created.slug+'kkkkkk'));
-      await cleanup(`article ${created.slug}`, () => authApi.delete(created.slug));
+      await cleanup(`article ${created.slug}`, () => authApi.deleteRaw(created.slug));
     
       await authCtx.dispose();
     });
@@ -112,43 +111,57 @@ test.describe('Articles — Public endpoints', () => {
 
   test('GET /api/articles/:slug — returns 404 for non-existent slug', async ({ request }) => {
     const api = new ArticlesApi(request);
-    const { status } = await api.getBySlug('this-slug-does-not-exist-99999');
-    expect(status).toBe(404);
+    const response = await api.getBySlugRaw('this-slug-does-not-exist-99999');
+    expect(response.status()).toBe(404);
   });
 
-  test('GET /api/articles — limit=0 returns a valid response', async ({ request }) => {
-    const { status, articles } = await new ArticlesApi(request).getAll({ limit: 0 });
-    expect(status).toBe(200);
-    expect(Array.isArray(articles)).toBe(true);
+  test('GET /api/articles — limit=0 should return an empty page [known server bug]', async ({ request }) => {
+    // getAll() asserts the 200 here, before test.fail() is set — so if the server ever starts
+    // erroring on limit=0, that fails genuinely instead of being recorded as expected.
+    const { articles } = await new ArticlesApi(request).getAll({ limit: 0 });
+
+    // Known server bug: 0 is falsy on the server, so it falls back to the default page size and
+    // returns all 10 seeded articles. Probed 2026-10-11 — limit=1 works, so only the falsy value
+    // is affected. test.fail() makes this a bug-tracker entry: the day the server returns an empty
+    // page, Playwright reports "Expected to fail, but passed" and this goes red.
+    test.fail();
+
+    expect(articles).toHaveLength(0);
   });
 
-  test('GET /api/articles — very large limit returns a valid response', async ({ request }) => {
-    const { status, articles, articlesCount } = await new ArticlesApi(request).getAll({ limit: 999999 });
-    expect(status).toBe(200);
-    expect(Array.isArray(articles)).toBe(true);
-    expect(articles.length).toBeLessThanOrEqual(articlesCount);
+  test('GET /api/articles — a limit larger than the total returns every article', async ({ request }) => {
+    const { articles, articlesCount } = await new ArticlesApi(request).getAll({ limit: 999999 });
+
+    // articlesCount is the total, not the page size (limit=1 returns 1 article and a count of 10),
+    // so an oversized limit must return the whole set — exactly once, nothing missing.
+    // Probed 2026-10-11: limit=999999 and limit=999999999999 both return 200 with all 10 seeded
+    // articles, so the server neither caps below the total nor overflows on a huge value.
+    expect(articles).toHaveLength(articlesCount);
+
+    // Guards against a vacuous pass: an empty seed would satisfy the line above with 0 === 0.
+    expect(articles.length).toBeGreaterThan(0);
   });
 
   test('GET /api/articles — negative offset returns 500', async ({ request }) => {
     // Server bug: offset=-1 crashes with a raw Prisma error instead of returning 400
-    const { status } = await new ArticlesApi(request).getAll({ limit: 5, offset: -1 });
-    expect(status).toBe(500);
+    const response = await new ArticlesApi(request).getAllRaw({ limit: 5, offset: -1 });
+    expect(response.status()).toBe(500);
   });
 });
 
 test.describe('Articles — Auth protection', () => {
   test('POST /api/articles — returns 401 without token', async ({ request }) => {
-    const { status } = await new ArticlesApi(request).create({
+    const response = await new ArticlesApi(request).createArticleRaw({
       title: 'Unauthorized',
       description: 'test',
       body: 'test',
     });
-    expect(status).toBe(401);
+    expect(response.status()).toBe(401);
   });
 
   test('GET /api/articles/feed — returns 401 without token', async ({ request }) => {
-    const { status } = await new ArticlesApi(request).getFeed();
-    expect(status).toBe(401);
+    const response = await new ArticlesApi(request).getFeedRaw();
+    expect(response.status()).toBe(401);
   });
 
   test('DELETE /api/articles/:slug — returns 401 without token', async ({ request }) => {
@@ -156,21 +169,20 @@ test.describe('Articles — Auth protection', () => {
     let article: Article;
 
     await test.step('Create article as owner', async () => {
-      const { article: created } = await new ArticlesApi(authCtx).create({
+      article = await new ArticlesApi(authCtx).createArticle({
         title: `PW Auth Del ${uniqueId()}`,
         description: 'for auth test',
         body: 'for auth test',
       });
-      article = created;
     });
 
     await test.step('Attempt delete without token', async () => {
-      const { status } = await new ArticlesApi(request).delete(article.slug);
-      expect(status).toBe(401);
+      const response = await new ArticlesApi(request).deleteRaw(article.slug);
+      expect(response.status()).toBe(401);
     });
 
     await test.step('Cleanup: delete article and dispose context', async () => {
-      await cleanup(`article ${article.slug}`, () => new ArticlesApi(authCtx).delete(article.slug));
+      await cleanup(`article ${article.slug}`, () => new ArticlesApi(authCtx).deleteRaw(article.slug));
       await authCtx.dispose();
     });
   });
@@ -182,22 +194,21 @@ test.describe('Articles — Auth protection', () => {
 
     await test.step('Owner registers and creates an article', async () => {
       ownerCtx = await createAuthContext();
-      const { article: created } = await new ArticlesApi(ownerCtx).create({
+      article = await new ArticlesApi(ownerCtx).createArticle({
         title: `PW Owner ${uniqueId()}`,
         description: 'owner article',
         body: 'owner article body',
       });
-      article = created;
     });
 
     await test.step('Second user registers and attempts to edit the article', async () => {
       otherCtx = await createAuthContext();
-      const { status } = await new ArticlesApi(otherCtx).update(article.slug, { title: 'hijacked' });
-      expect(status).toBe(403);
+      const response = await new ArticlesApi(otherCtx).updateRaw(article.slug, { title: 'hijacked' });
+      expect(response.status()).toBe(403);
     });
 
     await test.step('Cleanup: delete article and dispose contexts', async () => {
-      await cleanup(`article ${article.slug}`, () => new ArticlesApi(ownerCtx).delete(article.slug));
+      await cleanup(`article ${article.slug}`, () => new ArticlesApi(ownerCtx).deleteRaw(article.slug));
       await ownerCtx.dispose();
       await otherCtx.dispose();
     });
@@ -210,22 +221,21 @@ test.describe('Articles — Auth protection', () => {
 
     await test.step('Owner registers and creates an article', async () => {
       ownerCtx = await createAuthContext();
-      const { article: created } = await new ArticlesApi(ownerCtx).create({
+      article = await new ArticlesApi(ownerCtx).createArticle({
         title: `PW Owner Del ${uniqueId()}`,
         description: 'owner article',
         body: 'owner article body',
       });
-      article = created;
     });
 
     await test.step('Second user registers and attempts to delete the article', async () => {
       otherCtx = await createAuthContext();
-      const { status } = await new ArticlesApi(otherCtx).delete(article.slug);
-      expect(status).toBe(403);
+      const response = await new ArticlesApi(otherCtx).deleteRaw(article.slug);
+      expect(response.status()).toBe(403);
     });
 
     await test.step('Cleanup: delete article and dispose contexts', async () => {
-      await cleanup(`article ${article.slug}`, () => new ArticlesApi(ownerCtx).delete(article.slug));
+      await cleanup(`article ${article.slug}`, () => new ArticlesApi(ownerCtx).deleteRaw(article.slug));
       await ownerCtx.dispose();
       await otherCtx.dispose();
     });
@@ -244,21 +254,20 @@ test.describe('Articles — Authenticated endpoints', () => {
 
   test.afterAll(async () => {
     if (createdSlug) {
-      await cleanup(`article ${createdSlug}`, () => api.delete(createdSlug));
+      await cleanup(`article ${createdSlug}`, () => api.deleteRaw(createdSlug));
     }
     // `?.` so a failed beforeAll reports its own error, not a second TypeError here.
     await authCtx?.dispose();
   });
 
   test('POST /api/articles — creates a new article', async () => {
-    const { status, article } = await api.create({
+    const article = await api.createArticle({
       title: `PW Test ${Date.now()}`,
       description: 'Created by Playwright API test',
       body: 'This is the article body created during automated testing.',
       tagList: ['playwright', 'automation'],
     });
 
-    expect(status).toBe(201);
     expect(article.slug).toBeTruthy();
     expect(article.tagList).toContain('playwright');
     expect(article.author).toBeDefined();
@@ -271,16 +280,13 @@ test.describe('Articles — Authenticated endpoints', () => {
     let updated: Article;
 
     await test.step('Create article to be updated', async () => {
-      const { status, article } = await api.create({
+      // create() asserts the 201 itself and attaches the server's body on failure.
+      created = await api.createArticle({
         title: `PW Pre-update ${Date.now()}`,
         description: 'Pre-update description',
         body: 'Pre-update body.',
         tagList: ['playwright'],
       });
-      // Assert the status, not article.slug: on a failed create `article` is undefined,
-      // so reading .slug throws a TypeError before the message below can be shown.
-      expect(status, 'Article creation must succeed before update can be tested').toBe(201);
-      created = article;
     });
 
     const updates = {
@@ -290,9 +296,8 @@ test.describe('Articles — Authenticated endpoints', () => {
     };
 
     await test.step('Update article attributes', async () => {
-      const { status, article } = await api.update(created.slug, updates);
+      const article = await api.update(created.slug, updates);
 
-      expect(status).toBe(200);
       expect(article.title).toBe(updates.title);
       expect(article.description).toBe(updates.description);
       expect(article.body).toBe(updates.body);
@@ -302,14 +307,14 @@ test.describe('Articles — Authenticated endpoints', () => {
     });
 
     await test.step('Verify changes persisted via a separate fetch', async () => {
-      const { article: fetched } = await api.getBySlug(updated.slug);
+      const fetched = await api.getBySlug(updated.slug);
       expect(fetched.title).toBe(updates.title);
       expect(fetched.description).toBe(updates.description);
       expect(fetched.body).toBe(updates.body);
     });
 
     await test.step('Cleanup: delete the article', async () => {
-      await cleanup(`article ${updated.slug}`, () => api.delete(updated.slug));
+      await cleanup(`article ${updated.slug}`, () => api.deleteRaw(updated.slug));
     });
   });
 
@@ -317,24 +322,22 @@ test.describe('Articles — Authenticated endpoints', () => {
     let created: Article;
 
     await test.step('Create article to favorite', async () => {
-      const { article } = await api.create({
+      created = await api.createArticle({
         title: `PW Fav ${uniqueId()}`,
         description: 'For favorite test',
         body: 'Article for favorite test.',
         tagList: [],
       });
-      created = article;
     });
 
     await test.step('Favorite the article', async () => {
-      const { status, article } = await api.favorite(created.slug);
-      expect(status).toBe(200);
+      const article = await api.favorite(created.slug);
       expect(article.favorited).toBe(true);
     });
 
     await test.step('Cleanup: unfavorite and delete article', async () => {
-      await cleanup(`unfavorite ${created.slug}`, () => api.unfavorite(created.slug));
-      await cleanup(`article ${created.slug}`, () => api.delete(created.slug));
+      await cleanup(`unfavorite ${created.slug}`, () => api.unfavoriteRaw(created.slug));
+      await cleanup(`article ${created.slug}`, () => api.deleteRaw(created.slug));
     });
   });
 
@@ -342,89 +345,88 @@ test.describe('Articles — Authenticated endpoints', () => {
     let created: Article;
 
     await test.step('Create and favorite article', async () => {
-      const { status, article } = await api.create({
+      created = await api.createArticle({
         title: `PW Unfav ${uniqueId()}`,
         description: 'For unfavorite test',
         body: 'Article for unfavorite test.',
         tagList: [],
       });
-      expect(status, 'Article creation must succeed before unfavorite can be tested').toBe(201);
-      created = article;
       await api.favorite(created.slug);
     });
 
     await test.step('Unfavorite the article', async () => {
-      const { status, article } = await api.unfavorite(created.slug);
-      expect(status).toBe(200);
+      const article = await api.unfavorite(created.slug);
       expect(article.favorited).toBe(false);
     });
 
     await test.step('Cleanup: delete article', async () => {
-      await cleanup(`article ${created.slug}`, () => api.delete(created.slug));
+      await cleanup(`article ${created.slug}`, () => api.deleteRaw(created.slug));
     });
   });
 
-  test('GET /api/articles/feed — returns feed for authenticated user', async () => {
-    const { status, articles } = await api.getFeed();
+  test('GET /api/articles/feed — is empty for a user who follows nobody', async () => {
+    const { articles, articlesCount } = await api.getFeed();
 
-    expect(status).toBe(200);
-    expect(Array.isArray(articles)).toBe(true);
-    expect(typeof articles.length).toBe('number');
+    // The feed carries articles by the users you follow. This block's user follows nobody, and
+    // nothing in this file calls follow, so the feed must be empty. Probed 2026-10-11: a user's
+    // own articles do not appear in their own feed either, so the other tests here cannot
+    // perturb this one.
+    expect(articles).toHaveLength(0);
+    expect(articlesCount).toBe(0);
   });
 
   test('DELETE /api/articles/:slug — deletes own article', async () => {
     let article: Article;
 
     await test.step('Create article to delete', async () => {
-      const { article: created } = await api.create({
+      article = await api.createArticle({
         title: `Del Me ${Date.now()}`,
         description: 'To be deleted',
         body: 'Will be deleted by test.',
         tagList: [],
       });
-      article = created;
     });
 
     await test.step('Delete the article', async () => {
-      const { status } = await api.delete(article.slug);
-      expect(status).toBe(204);
+      await api.delete(article.slug);
     });
 
     await test.step('Verify article is gone', async () => {
-      const { status } = await api.getBySlug(article.slug);
-      expect(status).toBe(404);
+      // Raw, because a 404 is the point here — the wrapper would assert 200.
+      const response = await api.getBySlugRaw(article.slug);
+      expect(response.status()).toBe(404);
     });
   });
 
   test('POST /api/articles — returns 422 when title is missing', async () => {
     // Cast is intentional: sending incomplete data to verify server-side validation
-    const { status, errors } = await api.create({ description: 'No title', body: 'Some body.' } as CreateArticleInput);
-    expect(status).toBe(422);
-    expect(errors).toBeDefined();
+    const response = await api.createArticleRaw({ description: 'No title', body: 'Some body.' } as CreateArticleInput);
+    expect(response.status()).toBe(422);
+    expect((await response.json()).errors).toBeDefined();
   });
 
   test('POST /api/articles — returns 422 when description is missing', async () => {
-    const { status, errors } = await api.create({ title: 'No desc', body: 'Some body.' } as CreateArticleInput);
-    expect(status).toBe(422);
-    expect(errors?.description).toBeDefined();
+    const response = await api.createArticleRaw({ title: 'No desc', body: 'Some body.' } as CreateArticleInput);
+    expect(response.status()).toBe(422);
+    expect((await response.json()).errors?.description).toBeDefined();
   });
 
   test('POST /api/articles — returns 422 when description is empty', async () => {
-    const { status, errors } = await api.create({ title: 'Empty desc', description: '', body: 'Some body.' });
-    expect(status).toBe(422);
-    expect(errors?.description).toBeDefined();
+    const response = await api.createArticleRaw({ title: 'Empty desc', description: '', body: 'Some body.' });
+    expect(response.status()).toBe(422);
+    expect((await response.json()).errors?.description).toBeDefined();
   });
 
   test('POST /api/articles — returns 422 when body is missing', async () => {
-    const { status, errors } = await api.create({ title: 'No body', description: 'Some desc.' } as CreateArticleInput);
-    expect(status).toBe(422);
-    expect(errors?.body).toBeDefined();
+    const response = await api.createArticleRaw({ title: 'No body', description: 'Some desc.' } as CreateArticleInput);
+    expect(response.status()).toBe(422);
+    expect((await response.json()).errors?.body).toBeDefined();
   });
 
   test('POST /api/articles — returns 422 when body is empty', async () => {
-    const { status, errors } = await api.create({ title: 'Empty body', description: 'Some desc.', body: '' });
-    expect(status).toBe(422);
-    expect(errors?.body).toBeDefined();
+    const response = await api.createArticleRaw({ title: 'Empty body', description: 'Some desc.', body: '' });
+    expect(response.status()).toBe(422);
+    expect((await response.json()).errors?.body).toBeDefined();
   });
 
   test('POST /api/articles — stores special characters in title without mangling', async () => {
@@ -432,13 +434,11 @@ test.describe('Articles — Authenticated endpoints', () => {
     let article: Article;
 
     await test.step('Create article with special characters in title', async () => {
-      const { status, article: created } = await api.create({
+      article = await api.createArticle({
         title,
         description: 'Special chars test',
         body: 'Special chars body.',
       });
-      expect(status).toBe(201);
-      article = created;
     });
 
     await test.step('Verify title stored verbatim', async () => {
@@ -446,7 +446,7 @@ test.describe('Articles — Authenticated endpoints', () => {
     });
 
     await test.step('Cleanup: delete article', async () => {
-      await cleanup(`article ${article.slug}`, () => api.delete(article.slug));
+      await cleanup(`article ${article.slug}`, () => api.deleteRaw(article.slug));
     });
   });
 
@@ -455,13 +455,11 @@ test.describe('Articles — Authenticated endpoints', () => {
     let article: Article;
 
     await test.step('Create article with SQL injection string in title', async () => {
-      const { status, article: created } = await api.create({
+      article = await api.createArticle({
         title,
         description: 'SQL injection test',
         body: 'SQL injection body.',
       });
-      expect(status).toBe(201);
-      article = created;
     });
 
     await test.step('Verify title stored verbatim', async () => {
@@ -469,7 +467,7 @@ test.describe('Articles — Authenticated endpoints', () => {
     });
 
     await test.step('Cleanup: delete article', async () => {
-      await cleanup(`article ${article.slug}`, () => api.delete(article.slug));
+      await cleanup(`article ${article.slug}`, () => api.deleteRaw(article.slug));
     });
   });
 });

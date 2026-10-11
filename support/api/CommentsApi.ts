@@ -1,49 +1,39 @@
-import { APIRequestContext } from '@playwright/test';
+import { APIRequestContext, APIResponse } from '@playwright/test';
 import { Comment } from '../types';
 import { unwrap } from './unwrap';
+import { expectStatus } from './expectStatus';
 
-export interface AddCommentResult {
-  status: number;
-  comment: Comment;
-  errors?: Record<string, string[]>;
-}
-
-export interface ListCommentsResult {
-  status: number;
-  comments: Comment[];
-}
-
+/** See ArticlesApi for why every endpoint has a Raw method and a wrapper. */
 export class CommentsApi {
   constructor(private readonly request: APIRequestContext) {}
 
-  async list(slug: string): Promise<ListCommentsResult> {
-    const response = await this.request.get(`/api/articles/${slug}/comments`);
-    const body = await response.json();
-
-    return { 
-      status: response.status(), 
-      comments: unwrap(body, 'comments', response.status()) 
-    };
+  async listRaw(slug: string): Promise<APIResponse> {
+    return await this.request.get(`/api/articles/${slug}/comments`);
   }
 
-  async create(slug: string, body?: string): Promise<AddCommentResult> {
-    const response = await this.request.post(`/api/articles/${slug}/comments`, {
-      data: { comment: { body } },
-    });
-    const res = await response.json();
-
-    return { 
-      status: response.status(), 
-      comment: unwrap(res, 'comment', response.status()), 
-      errors: res.errors 
-    };
+  async list(slug: string): Promise<Comment[]> {
+    const response = await this.listRaw(slug);
+    await expectStatus(response, 200);
+    return unwrap(await response.json(), 'comments');
   }
 
-  async delete(slug: string, id: number): Promise<{ status: number }> {
-    const response = await this.request.delete(`/api/articles/${slug}/comments/${id}`);
-    
-    return { 
-      status: response.status() 
-    };
+  // body is optional so a negative test can send the field empty or missing.
+  async createRaw(slug: string, body?: string): Promise<APIResponse> {
+    return await this.request.post(`/api/articles/${slug}/comments`, { data: { comment: { body } } });
+  }
+
+  async create(slug: string, body: string): Promise<Comment> {
+    const response = await this.createRaw(slug, body);
+    await expectStatus(response, 200);
+    return unwrap(await response.json(), 'comment');
+  }
+
+  async deleteRaw(slug: string, id: number): Promise<APIResponse> {
+    return await this.request.delete(`/api/articles/${slug}/comments/${id}`);
+  }
+
+  async delete(slug: string, id: number): Promise<void> {
+    const response = await this.deleteRaw(slug, id);
+    await expectStatus(response, 200);
   }
 }

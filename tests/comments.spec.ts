@@ -15,39 +15,49 @@ test.describe('Comments', () => {
     articlesApi = new ArticlesApi(authCtx);
     commentsApi = new CommentsApi(authCtx);
 
-    const { status, article } = await articlesApi.create({
+    // create() asserts the 201 and returns the article, so a failed setup fails here
+    // with the server's own message rather than later as an unrelated TypeError.
+    const article = await articlesApi.createArticle({
       title: `Cmts ${Date.now()}`,
       description: 'For comment tests',
       body: 'Article body for comment tests.',
       tagList: [],
     });
-    // ArticleResult types `article` as non-optional, but it is undefined on a
-    // non-2xx. Without this check a failed setup surfaces later as "Cannot read
-    // properties of undefined", inside a test that looks unrelated.
-    expect(status, 'setup article was not created').toBe(201);
     articleSlug = article.slug;
   });
 
   test.afterAll(async () => {
     if (articleSlug) {
-      await cleanup(`article ${articleSlug}`, () => articlesApi.delete(articleSlug));
+      await cleanup(`article ${articleSlug}`, () => articlesApi.deleteRaw(articleSlug));
     }
     // `?.` so a failed beforeAll reports its own error, not a second TypeError here.
     await authCtx?.dispose();
   });
 
-  test('GET /api/articles/:slug/comments — returns empty array initially', async ({ request }) => {
-    const publicComments = new CommentsApi(request);
-    const { status, comments } = await publicComments.list(articleSlug);
+  test('GET /api/articles/:slug/comments — returns an empty list for a brand-new article', async () => {
+    // Its own article, not the shared one from beforeAll. Three other tests in this block add
+    // comments to that article, so "no comments yet" would hang on declaration order.
+    const article = await articlesApi.createArticle({
+      title: `Cmts empty ${Date.now()}`,
+      description: 'For the empty-list check',
+      body: 'This article never gets a comment.',
+      tagList: [],
+    });
 
-    expect(status).toBe(200);
-    expect(Array.isArray(comments)).toBe(true);
+    try {
+      // Authenticated on purpose. Anonymous comment reads on this server always come back
+      // empty (see CLAUDE.md, Key constraints), so an anonymous read would pass here even if
+      // the article had fifty comments.
+      const comments = await commentsApi.list(article.slug);
+      expect(comments).toHaveLength(0);
+    } finally {
+      await cleanup(`article ${article.slug}`, () => articlesApi.deleteRaw(article.slug));
+    }
   });
 
   test('POST /api/articles/:slug/comments — adds a comment when authenticated', async () => {
-    const { status, comment } = await commentsApi.create(articleSlug, 'This is a test comment from Playwright.');
+    const comment = await commentsApi.create(articleSlug, 'This is a test comment from Playwright.');
 
-    expect(status).toBe(200);
     expect(comment.id).toBeTruthy();
     expect(comment.body).toBe('This is a test comment from Playwright.');
     expect(comment.author).toBeDefined();
@@ -55,25 +65,24 @@ test.describe('Comments', () => {
 
   test('POST /api/articles/:slug/comments — returns 401 without auth', async ({ request }) => {
     const publicComments = new CommentsApi(request);
-    const { status } = await publicComments.create(articleSlug, 'Unauthenticated comment attempt.');
-    expect(status).toBe(401);
+    const response = await publicComments.createRaw(articleSlug, 'Unauthenticated comment attempt.');
+    expect(response.status()).toBe(401);
   });
 
   test('DELETE /api/articles/:slug/comments/:id — returns 401 without token', async ({ request }) => {
     let comment: Comment;
 
     await test.step('Create comment to attempt deleting', async () => {
-      const { comment: created } = await commentsApi.create(articleSlug, 'Comment for auth delete test.');
-      comment = created;
+      comment = await commentsApi.create(articleSlug, 'Comment for auth delete test.');
     });
 
     await test.step('Attempt delete without token', async () => {
-      const { status } = await new CommentsApi(request).delete(articleSlug, comment.id);
-      expect(status).toBe(401);
+      const response = await new CommentsApi(request).deleteRaw(articleSlug, comment.id);
+      expect(response.status()).toBe(401);
     });
 
     await test.step('Cleanup: delete comment', async () => {
-      await cleanup(`comment ${comment.id} on ${articleSlug}`, () => commentsApi.delete(articleSlug, comment.id));
+      await cleanup(`comment ${comment.id} on ${articleSlug}`, () => commentsApi.deleteRaw(articleSlug, comment.id));
     });
   });
 
@@ -81,31 +90,29 @@ test.describe('Comments', () => {
     let comment: Comment;
 
     await test.step('Create comment to delete', async () => {
-      const { comment: created } = await commentsApi.create(articleSlug, 'Comment to be deleted.');
-      comment = created;
+      comment = await commentsApi.create(articleSlug, 'Comment to be deleted.');
     });
 
     await test.step('Delete the comment', async () => {
-      const { status } = await commentsApi.delete(articleSlug, comment.id);
-      expect(status).toBe(200);
+      await commentsApi.delete(articleSlug, comment.id);
     });
 
     await test.step('Verify comment removed from list', async () => {
-      const { comments } = await commentsApi.list(articleSlug);
+      const comments = await commentsApi.list(articleSlug);
       expect(comments.find(c => c.id === comment.id)).toBeUndefined();
     });
   });
 
   test('POST /api/articles/:slug/comments — returns 422 when body is missing', async () => {
-    const { status, errors } = await commentsApi.create(articleSlug, undefined);
-    expect(status).toBe(422);
-    expect(errors?.body).toBeDefined();
+    const response = await commentsApi.createRaw(articleSlug, undefined);
+    expect(response.status()).toBe(422);
+    expect((await response.json()).errors?.body).toBeDefined();
   });
 
   test('POST /api/articles/:slug/comments — returns 422 when body is empty', async () => {
-    const { status, errors } = await commentsApi.create(articleSlug, '');
-    expect(status).toBe(422);
-    expect(errors?.body).toBeDefined();
+    const response = await commentsApi.createRaw(articleSlug, '');
+    expect(response.status()).toBe(422);
+    expect((await response.json()).errors?.body).toBeDefined();
   });
 });
 

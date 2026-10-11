@@ -9,19 +9,15 @@ const THRESHOLD_MS = 2000;
 test.describe('Performance — Response time checks', () => {
   test('GET /api/articles — responds within 2000ms', async ({ request }) => {
     const start = Date.now();
-    const { status } = await new ArticlesApi(request).getAll({ limit: 10 });
+    await new ArticlesApi(request).getAll({ limit: 10 });
     const duration = Date.now() - start;
-
-    expect(status).toBe(200);
     expect(duration).toBeLessThan(THRESHOLD_MS);
   });
 
   test('GET /api/tags — responds within 2000ms', async ({ request }) => {
     const start = Date.now();
-    const { status } = await new TagsApi(request).getAll();
+    await new TagsApi(request).getAll();
     const duration = Date.now() - start;
-
-    expect(status).toBe(200);
     expect(duration).toBeLessThan(THRESHOLD_MS);
   });
 
@@ -36,10 +32,8 @@ test.describe('Performance — Response time checks', () => {
 
     await test.step('Measure response time for GET by slug', async () => {
       const start = Date.now();
-      const { status } = await api.getBySlug(slug);
+      await api.getBySlug(slug);
       const duration = Date.now() - start;
-
-      expect(status).toBe(200);
       expect(duration).toBeLessThan(THRESHOLD_MS);
     });
   });
@@ -61,10 +55,8 @@ test.describe('Performance — Response time checks', () => {
 
     await test.step('Measure login response time', async () => {
       const start = Date.now();
-      const { status } = await api.login({ email, password: TEST_PASSWORD });
+      await api.login({ email, password: TEST_PASSWORD });
       const duration = Date.now() - start;
-
-      expect(status).toBe(200);
       expect(duration).toBeLessThan(THRESHOLD_MS);
     });
 
@@ -82,10 +74,8 @@ test.describe('Performance — Response time checks', () => {
 
     await test.step('Measure GET /api/user response time', async () => {
       const start = Date.now();
-      const { status } = await new AuthApi(authCtx).getCurrentUser();
+      await new AuthApi(authCtx).getCurrentUser();
       const duration = Date.now() - start;
-
-      expect(status).toBe(200);
       expect(duration).toBeLessThan(THRESHOLD_MS);
     });
 
