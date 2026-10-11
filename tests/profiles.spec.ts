@@ -20,9 +20,8 @@ test.describe('Profiles', () => {
     const username = await createTargetUser(playwright);
     const api = new ProfilesApi(request);
 
-    const { status, profile } = await api.get(username);
+    const profile = await api.get(username);
 
-    expect(status).toBe(200);
     expect(profile.username).toBe(username);
     expect(profile.following).toBe(false);
     expect('bio' in profile).toBe(true);
@@ -31,8 +30,8 @@ test.describe('Profiles', () => {
 
   test('GET /api/profiles/:username — returns 404 for non-existent user', async ({ request }) => {
     const api = new ProfilesApi(request);
-    const { status } = await api.get('this_user_does_not_exist_99999');
-    expect(status).toBe(404);
+    const response = await api.getRaw('this_user_does_not_exist_99999');
+    expect(response.status()).toBe(404);
   });
 
   test('POST /api/profiles/:username/follow — follows a user when authenticated', async ({ playwright }) => {
@@ -47,14 +46,13 @@ test.describe('Profiles', () => {
     });
 
     await test.step('Follow target user', async () => {
-      const { status, profile } = await api.follow(targetUsername);
-      expect(status).toBe(200);
+      const profile = await api.follow(targetUsername);
       expect(profile.following).toBe(true);
       expect(profile.username).toBe(targetUsername);
     });
 
     await test.step('Cleanup: unfollow and dispose context', async () => {
-      await cleanup(`unfollow ${targetUsername}`, () => api.unfollow(targetUsername));
+      await cleanup(`unfollow ${targetUsername}`, () => api.unfollowRaw(targetUsername));
       await authCtx.dispose();
     });
   });
@@ -72,8 +70,7 @@ test.describe('Profiles', () => {
     });
 
     await test.step('Unfollow target user', async () => {
-      const { status, profile } = await api.unfollow(targetUsername);
-      expect(status).toBe(200);
+      const profile = await api.unfollow(targetUsername);
       expect(profile.following).toBe(false);
     });
 
@@ -84,12 +81,12 @@ test.describe('Profiles', () => {
 
   test('POST /api/profiles/:username/follow — returns 401 without token', async ({ request }) => {
     const api = new ProfilesApi(request);
-    const { status } = await api.follow('any-user');
-    expect(status).toBe(401);
+    const response = await api.followRaw('any-user');
+    expect(response.status()).toBe(401);
   });
 
   test('DELETE /api/profiles/:username/follow — returns 401 without token', async ({ request }) => {
-    const { status } = await new ProfilesApi(request).unfollow('any-user');
-    expect(status).toBe(401);
+    const response = await new ProfilesApi(request).unfollowRaw('any-user');
+    expect(response.status()).toBe(401);
   });
 });

@@ -26,7 +26,7 @@ and `TEST_RECOMMENDATIONS.md` tracks what is missing from them.
 
 | File | Tests | Covers |
 |---|---|---|
-| `articles.spec.ts` | 26 | The biggest one. Public list and filters, pagination boundaries, auth protection, cross-user 403s, create / update / favourite / feed / delete, 422 validation, special characters |
+| `articles.spec.ts` | 26 | The biggest one. Public list and filters, pagination boundaries, auth protection, cross-user 403s, create / update / favourite / feed / delete, 422 validation, special characters. Holds one of the two expected failures |
 | `auth.spec.ts` | 9 | Register, login, get and update the current user, 401 without a token, 401 with a broken token |
 | `schema.spec.ts` | 9 | Runtime response-shape checks with zod, for articles, tags, profiles, users and comments |
 | `comments.spec.ts` | 7 | List, add, delete, 401 without auth, 422 on an empty body |
@@ -36,28 +36,38 @@ and `TEST_RECOMMENDATIONS.md` tracks what is missing from them.
 | `tags.spec.ts` | 3 | Tag list shape and filtering articles by tag |
 | `e2e-flow.spec.ts` | 1 | One long realistic journey: register → follow → create → **comment → update** → verify both → delete comment → unfollow → delete article. The comment is added *before* the update on purpose — the test checks it survives one |
 
-**One test is expected to fail.** In `error-response.spec.ts`, a `test.fail()` marks a real server bug:
-`GET /api/articles?offset=-1` returns 500 with raw Prisma internals. The test will start failing — which
-means passing — the day the server is fixed. That is deliberate.
+**Two tests are expected to fail.** Each `test.fail()` marks a real server bug, and each will start
+failing — which means passing — the day the server is fixed. That is deliberate.
+
+| Spec | Bug |
+|---|---|
+| `error-response.spec.ts` | `GET /api/articles?offset=-1` returns 500 with raw Prisma internals |
+| `articles.spec.ts` | `GET /api/articles?limit=0` returns the full default page instead of an empty one |
 
 ## 2. The code the tests use — `support/`
 
 Tests go through these rather than calling HTTP directly.
 
-**One exception**, and it is deliberate: `error-response.spec.ts` makes three direct `request.*`
-calls. It checks the *raw* response body, and these classes throw that body away — they return
-parsed, typed fields instead. See `CLAUDE.md`, Layer separation. Leave them alone.
+**Every endpoint has two methods.** `xxxRaw()` returns the `APIResponse` untouched and asserts
+nothing — negative tests use it. `xxx()` calls the Raw method, asserts the status that endpoint
+really returns, and gives back the typed payload — happy paths use it. See `CLAUDE.md`, Layer
+separation.
+
+`error-response.spec.ts` still makes three direct `request.*` calls. They predate the Raw methods,
+which were the only reason those calls existed: the classes used to discard the raw body. Migrating
+them is open work, not a rule.
 
 | File | What it holds |
 |---|---|
-| `api/ArticlesApi.ts` | 8 methods: getAll, getBySlug, create, update, delete, favorite, unfavorite, getFeed |
-| `api/AuthApi.ts` | register, login, getCurrentUser, updateCurrentUser |
-| `api/CommentsApi.ts` | list, create, delete |
-| `api/ProfilesApi.ts` | get, follow, unfollow |
-| `api/TagsApi.ts` | getAll |
-| `api/unwrap.ts` | `unwrap()` — pulls the payload out of a response envelope and fails with a clear message if the key is missing on a 2xx. Shared by all five API classes |
+| `api/ArticlesApi.ts` | 8 endpoints, 16 methods: getAll, getBySlug, createArticle, update, delete, favorite, unfavorite, getFeed — each with a `…Raw` twin |
+| `api/AuthApi.ts` | register, login, getCurrentUser, updateCurrentUser — plus a `…Raw` twin each |
+| `api/CommentsApi.ts` | list, create, delete — plus a `…Raw` twin each |
+| `api/ProfilesApi.ts` | get, follow, unfollow — plus a `…Raw` twin each |
+| `api/TagsApi.ts` | getAll, getAllRaw |
+| `api/expectStatus.ts` | `expectStatus(response, expected)` — asserts the status and puts the server's own body in the failure message. Takes no label: the URL comes from `response.url()`. Called by every wrapper |
+| `api/unwrap.ts` | `unwrap(body, key)` — pulls the payload out of a response envelope and throws if the key is missing. Runs after `expectStatus`, so it needs no status argument. Used only where the payload is nested, e.g. `{ article: … }` |
 | `env.ts` | `requiredEnv()` — the one env-var reader. Its own module so `playwright.config.ts` can guard `baseURL` without importing the rest of `helpers.ts` |
-| `helpers.ts` | `createAuthContext()`, `cleanup()`, `uniqueId()`, `generateEmail()`, and the five env constants — each read through `requiredEnv()` at load, so a missing one names itself instead of failing later as `Invalid URL` |
+| `helpers.ts` | `createAuthContext()`, `cleanup()` (pass it a `…Raw` method), `uniqueId()`, `generateEmail()`, and the five env constants — each read through `requiredEnv()` at load, so a missing one names itself instead of failing later as `Invalid URL` |
 | `types.ts` | Shared types: `Article`, `Author`, `Comment`, `Profile`, `User` |
 | `schemas.ts` | The zod schemas used by `schema.spec.ts` and `error-response.spec.ts`. All are `z.strictObject`, so a response field no schema declares fails the test instead of being stripped. `LoginUserSchema` is `UserSchema` without `id`, because the login endpoint alone omits it |
 

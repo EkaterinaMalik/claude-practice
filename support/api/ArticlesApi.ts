@@ -1,6 +1,7 @@
-import { APIRequestContext } from '@playwright/test';
+import { APIRequestContext, APIResponse } from '@playwright/test';
 import { Article } from '../types';
 import { unwrap } from './unwrap';
+import { expectStatus } from './expectStatus';
 
 export interface CreateArticleInput {
   title: string;
@@ -28,124 +29,115 @@ export interface FeedParams {
   offset?: number;
 }
 
-export interface ArticleResult {
-  status: number;
-  article: Article;
-  errors?: Record<string, string[]>;
-}
-
-export interface ListArticlesResult {
-  status: number;
+/** What a list endpoint returns once the status has been checked. */
+export interface ArticleList {
   articles: Article[];
   articlesCount: number;
 }
 
+/**
+ * Two methods per endpoint.
+ *
+ * `xxxRaw()` returns the response untouched. Negative tests use it: they want the status, the
+ * raw text, the error envelope — things a parsed payload has thrown away.
+ *
+ * `xxx()` is for happy paths. It calls the Raw method, asserts the status that endpoint really
+ * returns, and hands back the payload. Because the status is checked first, the payload is
+ * always there, so nothing downstream has to ask whether it exists.
+ */
 export class ArticlesApi {
   constructor(private readonly request: APIRequestContext) {}
 
-  async getAll(params?: ListArticlesParams): Promise<ListArticlesResult> {
+  private static buildParamsForURL(params?: ListArticlesParams | FeedParams): string {
     const query = new URLSearchParams();
-    if (params?.tag) query.set('tag', params.tag);
-    if (params?.author) query.set('author', params.author);
-    if (params?.favorited) query.set('favorited', params.favorited);
+    const p = params as ListArticlesParams | undefined;
+    if (p?.tag) query.set('tag', p.tag);
+    if (p?.author) query.set('author', p.author);
+    if (p?.favorited) query.set('favorited', p.favorited);
     if (params?.limit !== undefined) query.set('limit', String(params.limit));
     if (params?.offset !== undefined) query.set('offset', String(params.offset));
     const qs = query.toString();
-    const response = await this.request.get(`/api/articles${qs ? `?${qs}` : ''}`);
-    const body = await response.json();
-
-    return { 
-      status: response.status(), 
-      articles: unwrap(body, 'articles', response.status()), 
-      articlesCount: unwrap(body, 'articlesCount', response.status()) 
-    };
+    return qs ? `?${qs}` : '';
   }
 
-  async getBySlug(slug: string): Promise<ArticleResult> {
-    const response = await this.request.get(`/api/articles/${slug}`);
-    const body = await response.json();
-
-    return { 
-      status: response.status(),
-      article: unwrap(body, 'article', response.status()) 
-    };
+  async getAllRaw(params?: ListArticlesParams): Promise<APIResponse> {
+    return await this.request.get(`/api/articles${ArticlesApi.buildParamsForURL(params)}`);
   }
 
-  async create(data: CreateArticleInput): Promise<ArticleResult> {
-    const response = await this.request.post('/api/articles', {
-      data: { 
-        article: data 
-      },
-    });
-    const body = await response.json();
-
-    // return a new object with properties: 
-    // { status: value, 
-    // article: value,
-    //  and errors: value
-    //}
-    // type: interface 'ArticleResult'
-    return {
-      status: response.status(),
-      article: unwrap(body, 'article', response.status()),
-      errors: body.errors
-    };
+  async getAll(params?: ListArticlesParams): Promise<ArticleList> {
+    const response = await this.getAllRaw(params);
+    await expectStatus(response, 200);
+    // The body already is { articles, articlesCount } — nothing to dig out.
+    return await response.json();
   }
 
-  async update(slug: string, data: UpdateArticleInput): Promise<ArticleResult> {
-    const response = await this.request.put(`/api/articles/${slug}`, {
-      data: { 
-        article: data 
-      },
-    });
-    const body = await response.json();
-
-    return { 
-      status: response.status(),
-      article: unwrap(body, 'article', response.status()) 
-    };
+  async getBySlugRaw(slug: string): Promise<APIResponse> {
+    return await this.request.get(`/api/articles/${slug}`);
   }
 
-  async delete(slug: string): Promise<{ status: number }> {
-    const response = await this.request.delete(`/api/articles/${slug}`);
-
-    return { 
-      status: response.status() 
-    };
+  async getBySlug(slug: string): Promise<Article> {
+    const response = await this.getBySlugRaw(slug);
+    await expectStatus(response, 200);
+    return unwrap(await response.json(), 'article');
   }
 
-  async favorite(slug: string): Promise<ArticleResult> {
-    const response = await this.request.post(`/api/articles/${slug}/favorite`);
-    const body = await response.json();
-
-    return { 
-      status: response.status(),
-      article: unwrap(body, 'article', response.status()) 
-    };
+  async createArticleRaw(data: CreateArticleInput): Promise<APIResponse> {
+    return await this.request.post('/api/articles', { data: { article: data } });
   }
 
-  async unfavorite(slug: string): Promise<ArticleResult> {
-    const response = await this.request.delete(`/api/articles/${slug}/favorite`);
-    const body = await response.json();
-
-    return { 
-      status: response.status(), 
-      article: unwrap(body, 'article', response.status()) 
-    };
+  async createArticle(data: CreateArticleInput): Promise<Article> {
+    const response = await this.createArticleRaw(data);
+    await expectStatus(response, 201);
+    return unwrap(await response.json(), 'article');
   }
 
-  async getFeed(params?: FeedParams): Promise<ListArticlesResult> {
-    const query = new URLSearchParams();
-    if (params?.limit !== undefined) query.set('limit', String(params.limit));
-    if (params?.offset !== undefined) query.set('offset', String(params.offset));
-    const qs = query.toString();
-    const response = await this.request.get(`/api/articles/feed${qs ? `?${qs}` : ''}`);
-    const body = await response.json();
+  async updateRaw(slug: string, data: UpdateArticleInput): Promise<APIResponse> {
+    return await this.request.put(`/api/articles/${slug}`, { data: { article: data } });
+  }
 
-    return { 
-      status: response.status(),
-      articles: unwrap(body, 'articles', response.status()), 
-      articlesCount: unwrap(body, 'articlesCount', response.status()) 
-    };
+  /** Changing the title changes the slug. Use the returned article's slug afterwards. */
+  async update(slug: string, data: UpdateArticleInput): Promise<Article> {
+    const response = await this.updateRaw(slug, data);
+    await expectStatus(response, 200);
+    return unwrap(await response.json(), 'article');
+  }
+
+  async deleteRaw(slug: string): Promise<APIResponse> {
+    return await this.request.delete(`/api/articles/${slug}`);
+  }
+
+  async delete(slug: string): Promise<void> {
+    const response = await this.deleteRaw(slug);
+    await expectStatus(response, 204);
+  }
+
+  async favoriteRaw(slug: string): Promise<APIResponse> {
+    return await this.request.post(`/api/articles/${slug}/favorite`);
+  }
+
+  async favorite(slug: string): Promise<Article> {
+    const response = await this.favoriteRaw(slug);
+    await expectStatus(response, 200);
+    return unwrap(await response.json(), 'article');
+  }
+
+  async unfavoriteRaw(slug: string): Promise<APIResponse> {
+    return await this.request.delete(`/api/articles/${slug}/favorite`);
+  }
+
+  async unfavorite(slug: string): Promise<Article> {
+    const response = await this.unfavoriteRaw(slug);
+    await expectStatus(response, 200);
+    return unwrap(await response.json(), 'article');
+  }
+
+  async getFeedRaw(params?: FeedParams): Promise<APIResponse> {
+    return await this.request.get(`/api/articles/feed${ArticlesApi.buildParamsForURL(params)}`);
+  }
+
+  async getFeed(params?: FeedParams): Promise<ArticleList> {
+    const response = await this.getFeedRaw(params);
+    await expectStatus(response, 200);
+    return await response.json();
   }
 }

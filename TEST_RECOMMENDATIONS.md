@@ -2,8 +2,9 @@
 ### Based on: *8 API Testing Mistakes That Keep QA Engineers at Junior Level* — Aston Cook
 
 **Suite state when last audited:** 2026-10-10 — 72 tests across 9 spec files. A full run reports
-72 passed. One of those is an expected `test.fail()` that tracks a known server bug, so the
-runner counts it as passing while it keeps failing. `npm run typecheck` is clean.
+72 passed. Two of those are expected `test.fail()` markers tracking known server bugs
+(`offset=-1` leaking Prisma internals, and `limit=0` returning the default page instead of an
+empty one), so the runner counts them as passing while they keep failing. `npm run typecheck` is clean.
 
 > Keep this file in sync with `tests/`. Whenever a spec file is added, removed, or
 > meaningfully changed, re-check the section it belongs to and update the ✅ / gap lists below.
@@ -26,14 +27,16 @@ test something they previously only appeared to test. That is a coverage change,
   plain `request` fixture. This server returns an empty array to anonymous callers, so the test had
   validated zero comments for months. It now lists through an authenticated context. The quirk is
   recorded in `CLAUDE.md` under Key constraints.
-- **Five create calls never checked their status.** `article` is typed as non-optional. On a
+- **Five create calls never checked their status.** `article` was typed as non-optional, but on a
   non-2xx it is undefined. So a failed create surfaced two steps later as "Cannot read properties
   of undefined", in a test that looked unrelated. Three of the five were `beforeAll` hooks, which
-  took a whole describe block with them. All five now assert the status.
-- **Cleanup failures are now reported.** The old `.catch()` pattern could not see them. The API
-  classes return `{ status }` and never throw. A 403 or 404 resolved normally and logged nothing.
-  The `cleanup()` helper in `support/helpers.ts` checks the status, warns, and annotates the
-  report.
+  took a whole describe block with them. This is now structural rather than a per-call fix: the
+  wrapper methods (`create`, `getBySlug`, …) assert the status before they read a payload, so no
+  spec can reach an undefined one. Negative tests call the `…Raw` twin instead.
+- **Cleanup failures are now reported.** The old `.catch()` pattern could not see them. A `…Raw`
+  method never throws on a non-2xx, so a 403 or 404 resolved normally and logged nothing. The
+  `cleanup()` helper in `support/helpers.ts` takes a `…Raw` method, checks the status, warns, and
+  annotates the report.
 - **TypeScript is now actually checked.** `tsconfig.json` and `npm run typecheck` (`tsc --noEmit`)
   arrived on 2026-10-03. Before that, nothing verified the type claims this file makes under #7.
 - **A missing environment variable now names itself**, through `requiredEnv()` in `support/env.ts`,
@@ -64,7 +67,9 @@ test something they previously only appeared to test. That is a coverage change,
 - ✅ Articles: 422 for missing/empty title, description, body
 - ✅ Comments: 422 for missing/empty body
 - ✅ Auth: 422 for empty registration fields (`username`/`email`/`password` sent as `''`)
-- ✅ Pagination boundaries: `limit=0` → 200, `limit=999999` → 200, `offset=-1` → 500 (server bug, asserted as-is)
+- ✅ Pagination boundaries: `limit=999999` → 200 returning every article exactly once,
+  `offset=-1` → 500 (server bug, tracked with `test.fail()`), `limit=0` → 200 returning the full
+  default page rather than an empty one (server bug, tracked with `test.fail()`)
 - ✅ Special characters: `<script>alert(1)</script>` stored verbatim in article title
 - ✅ SQL injection string `' OR 1=1; --` stored verbatim in article title
 

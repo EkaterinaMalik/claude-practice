@@ -1,42 +1,43 @@
-import { APIRequestContext } from '@playwright/test';
+import { APIRequestContext, APIResponse } from '@playwright/test';
 import { Profile } from '../types';
 import { unwrap } from './unwrap';
+import { expectStatus } from './expectStatus';
 
-export interface ProfileResult {
-  status: number;
-  profile: Profile;
-}
-
+/** See ArticlesApi for why every endpoint has a Raw method and a wrapper. */
 export class ProfilesApi {
   constructor(private readonly request: APIRequestContext) {}
 
-  async get(username: string): Promise<ProfileResult> {
-    const response = await this.request.get(`/api/profiles/${encodeURIComponent(username)}`);
-    const body = await response.json();
-
-    return { 
-      status: response.status(), 
-      profile: unwrap(body, 'profile', response.status()) 
-    };
+  private static path(username: string): string {
+    return `/api/profiles/${encodeURIComponent(username)}`;
   }
 
-  async follow(username: string): Promise<ProfileResult> {
-    const response = await this.request.post(`/api/profiles/${encodeURIComponent(username)}/follow`);
-    const body = await response.json();
-
-    return { 
-      status: response.status(), 
-      profile: unwrap(body, 'profile', response.status()) 
-    };
+  async getRaw(username: string): Promise<APIResponse> {
+    return await this.request.get(ProfilesApi.path(username));
   }
 
-  async unfollow(username: string): Promise<ProfileResult> {
-    const response = await this.request.delete(`/api/profiles/${encodeURIComponent(username)}/follow`);
-    const body = await response.json();
-    
-    return { 
-      status: response.status(), 
-      profile: unwrap(body, 'profile', response.status()) 
-    };
+  async get(username: string): Promise<Profile> {
+    const response = await this.getRaw(username);
+    await expectStatus(response, 200);
+    return unwrap(await response.json(), 'profile');
+  }
+
+  async followRaw(username: string): Promise<APIResponse> {
+    return await this.request.post(`${ProfilesApi.path(username)}/follow`);
+  }
+
+  async follow(username: string): Promise<Profile> {
+    const response = await this.followRaw(username);
+    await expectStatus(response, 200);
+    return unwrap(await response.json(), 'profile');
+  }
+
+  async unfollowRaw(username: string): Promise<APIResponse> {
+    return await this.request.delete(`${ProfilesApi.path(username)}/follow`);
+  }
+
+  async unfollow(username: string): Promise<Profile> {
+    const response = await this.unfollowRaw(username);
+    await expectStatus(response, 200);
+    return unwrap(await response.json(), 'profile');
   }
 }

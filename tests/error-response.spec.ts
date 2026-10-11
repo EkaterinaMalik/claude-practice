@@ -15,21 +15,19 @@ test.describe('Error responses — Shape and safety', () => {
     authCtx = await createAuthContext();
     articlesApi = new ArticlesApi(authCtx);
 
-    const { status, article } = await articlesApi.create({
+    // create() asserts the 201 and returns the article, so a failed setup fails here
+    // with the server's own message rather than later as an unrelated TypeError.
+    const article = await articlesApi.createArticle({
       title: `ErrTest ${uniqueId()}`,
       description: 'For error response tests',
       body: 'Article body for error response tests.',
     });
-    // ArticleResult types `article` as non-optional, but it is undefined on a
-    // non-2xx. Without this check a failed setup surfaces later as "Cannot read
-    // properties of undefined", inside a test that looks unrelated.
-    expect(status, 'setup article was not created').toBe(201);
     articleSlug = article.slug;
   });
 
   test.afterAll(async () => {
     if (articleSlug) {
-      await cleanup(`article ${articleSlug}`, () => articlesApi.delete(articleSlug));
+      await cleanup(`article ${articleSlug}`, () => articlesApi.deleteRaw(articleSlug));
     }
     
     // `?.` so a failed beforeAll reports its own error, not a second TypeError here.

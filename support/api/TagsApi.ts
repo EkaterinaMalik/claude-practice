@@ -1,21 +1,18 @@
-import { APIRequestContext } from '@playwright/test';
+import { APIRequestContext, APIResponse } from '@playwright/test';
 import { unwrap } from './unwrap';
+import { expectStatus } from './expectStatus';
 
-export interface TagsResult {
-  status: number;
-  tags: string[];
-}
-
+/** See ArticlesApi for why every endpoint has a Raw method and a wrapper. */
 export class TagsApi {
   constructor(private readonly request: APIRequestContext) {}
 
-  async getAll(): Promise<TagsResult> {
-    const response = await this.request.get('/api/tags');
-    const body = await response.json();
+  async getAllRaw(): Promise<APIResponse> {
+    return await this.request.get('/api/tags');
+  }
 
-    return { 
-      status: response.status(), 
-      tags: unwrap(body, 'tags', response.status()) 
-    };
+  async getAll(): Promise<string[]> {
+    const response = await this.getAllRaw();
+    await expectStatus(response, 200);
+    return unwrap(await response.json(), 'tags');
   }
 }

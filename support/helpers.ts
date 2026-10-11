@@ -46,14 +46,14 @@ async function describeResponse(response: APIResponse): Promise<string> {
  */
 export async function cleanup(
   label: string,
-  action: () => Promise<{ status: number }>
+  action: () => Promise<APIResponse>
 ): Promise<void> {
   let problem: string | undefined;
 
   try {
    // const result = await action();
    // const status = result.status;
-    const { status } = await action();
+    const status = (await action()).status();
     if (status < 200 || status >= 300) {
       problem = `${label} — server returned ${status}`;
     }
