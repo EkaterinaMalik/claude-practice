@@ -212,19 +212,32 @@ without — so each endpoint's real shape is pinned.
 
 ## Remaining Work
 
-Everything below is a genuine gap, in the order worth doing:
+**Nothing open.** Every item this audit raised has been written, and the last one — the deprecated
+Node 20 actions in the workflow — closed on 2026-10-17.
 
-| Priority | Item | Mistake | Effort |
-|----------|------|---------|--------|
-| 1 | The CI workflow still uses a Node 20 action that GitHub has deprecated | — | Low |
+That is a statement about this checklist, not about the suite. It means the "8 API Testing
+Mistakes" list no longer points at anything missing here. Coverage gaps the checklist never asked
+about are still gaps, and the live API keeps changing underneath the suite — `offset=-1` was fixed
+the same week. Re-run the audit rather than trusting this line.
 
-Re-checked against the live API on 2026-10-17. Three items were closed that day — the fractional
-Prisma leak now has a tracker, the last direct `request.*` calls are gone, and the duplicate tag
-test was removed. Numbers in this table are renumbered as items close, so do not cite them from a
-code comment; describe the work instead.
+When an item is added back, put it in a table here. Numbers get renumbered as items close, so do
+not cite them from a code comment; describe the work instead. Three comments in `tests/` cited
+numbers that had drifted onto unrelated items before this was fixed.
+
+Re-checked against the live API on 2026-10-17.
 
 **Done since the last audit:**
 
+- **Every action in the CI workflow is off the deprecated Node 20 runtime.** The backlog named one
+  action, `dorny/test-reporter@v1`. Bumping it to `v3` (`v2` is `node20` too) made the runner's
+  warning name three more: `actions/checkout@v4`, `actions/setup-node@v4` and
+  `actions/upload-artifact@v4`, all `node20`. All four were bumped on 2026-10-17 and the warning is
+  gone. The breaking changes between `v4` and `v7` were checked against this workflow first:
+  `checkout@v7` blocks fork checkouts for `pull_request_target`, which this workflow does not use;
+  `setup-node@v5`/`v6` changed cache auto-detection, and this workflow passes `cache: npm`
+  explicitly; `upload-artifact@v7`'s new `archive` input is opt-in.
+- **Next: `ubuntu-latest` migrates to Ubuntu 26 from 2026-10-19.** The runner already prints a
+  notice. Nothing to do yet — noted so an unexplained CI change that week has an obvious suspect.
 - **Every spec now goes through the API layer.** `error-response.spec.ts` was the last file calling
   `request.*` directly. Those calls existed because the classes used to discard the raw body, and
   this spec asserts on it — leak patterns via `response.text()`, and the exact `{ errors: … }`
