@@ -1,6 +1,6 @@
 # Every file in this project, and what it is for
 
-A complete map. Written 2026-09-19, last re-counted 2026-10-11, when the suite had **78 tests in 9 spec files**.
+A complete map. Written 2026-09-19, last re-counted 2026-10-17, when the suite had **79 tests in 9 spec files**.
 
 Start here if you are not sure which file to open.
 
@@ -31,7 +31,7 @@ and `TEST_RECOMMENDATIONS.md` tracks what is missing from them.
 | `schema.spec.ts` | 9 | Runtime response-shape checks with zod, for articles, tags, profiles, users and comments |
 | `comments.spec.ts` | 7 | List, add, delete, 401 without auth, 422 on an empty body |
 | `profiles.spec.ts` | 6 | Get a profile, 404 for unknown, follow and unfollow, 401 without a token |
-| `error-response.spec.ts` | 6 | Error body shape, and checks that errors do not leak stack traces or database internals. Holds the one expected failure — a known server bug |
+| `error-response.spec.ts` | 7 | Error body shape, and checks that errors do not leak stack traces or database internals. Holds the one expected failure — a known server bug |
 | `performance.spec.ts` | 5 | Response times on five endpoints, all under one 2000ms threshold |
 | `tags.spec.ts` | 3 | Tag list shape and filtering articles by tag |
 | `e2e-flow.spec.ts` | 1 | One long realistic journey: register → follow → create → **comment → update** → verify both → delete comment → unfollow → delete article. The comment is added *before* the update on purpose — the test checks it survives one |
@@ -41,7 +41,7 @@ failing — which means passing — the day the server is fixed. That is deliber
 
 | Spec | Bug |
 |---|---|
-| `error-response.spec.ts` | `GET /api/articles?offset=-1` returns 500 with raw Prisma internals |
+| `error-response.spec.ts` | `GET /api/articles?limit=1.5` and `?offset=1.5` return 500 with raw Prisma internals. Pointed at `offset=-1` until 2026-10-17, when the server fixed that one |
 | `articles.spec.ts` | `GET /api/articles?limit=0` returns the full default page instead of an empty one |
 
 ## 2. The code the tests use — `support/`
@@ -53,9 +53,10 @@ nothing — negative tests use it. `xxx()` calls the Raw method, asserts the sta
 really returns, and gives back the typed payload — happy paths use it. See `CLAUDE.md`, Layer
 separation.
 
-`error-response.spec.ts` still makes three direct `request.*` calls. They predate the Raw methods,
-which were the only reason those calls existed: the classes used to discard the raw body. Migrating
-them is open work, not a rule.
+`error-response.spec.ts` still makes **two** direct `request.post('/api/users', …)` calls — it was
+three until `getAllRaw` took over the article one on 2026-10-17. They predate the Raw methods, which
+were the only reason those calls existed: the classes used to discard the raw body. `registerRaw`
+replaces both. Migrating them is open work, not a rule.
 
 | File | What it holds |
 |---|---|

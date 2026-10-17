@@ -142,13 +142,28 @@ test.describe('Articles — Public endpoints', () => {
     expect(articles.length).toBeGreaterThan(0);
   });
 
-  test('GET /api/articles — negative offset returns 500', async ({ request }) => {
-    // Server bug: offset=-1 crashes with a raw Prisma error instead of returning 400
-    const response = await new ArticlesApi(request).getAllRaw({ limit: 5, offset: -1 });
-    expect(response.status()).toBe(500);
+  // This used to be 'negative offset returns 500'. The server crashed here with a raw Prisma
+  // error, and CI went red on 2026-10-17 because that was fixed. Re-probed the same day: a
+  // negative offset is now ignored and you get the offset=0 page, the same fallback a
+  // non-numeric value gets. The fraction case below still crashes, so only part was fixed.
+  test('GET /api/articles — a negative offset is ignored, not rejected', async ({ request }) => {
+    const api = new ArticlesApi(request);
+    const firstPage = await api.getAll({ limit: 5, offset: 0 });
+
+    for (const offset of [-1, -99]) {
+      const response = await api.getAllRaw({ limit: 5, offset });
+      expect(response.status(), `offset=${offset} — expected the value to be ignored, not rejected`)
+        .toBe(200);
+
+      const { articles } = await response.json();
+      // Same slugs in the same order as offset=0 — proves it fell back rather than skipping.
+      expect(articles.map((a: Article) => a.slug), `offset=${offset} — should return the first page`)
+        .toEqual(firstPage.articles.map(a => a.slug));
+      expect(articles, `offset=${offset} — limit should still be honoured`).toHaveLength(5);
+    }
   });
 
-  // Remaining Work item 3. Probed 2026-10-11: a non-numeric value is ignored rather than
+  // Probed 2026-10-11, still true 2026-10-17: a non-numeric value is ignored rather than
   // rejected — the server falls back to its default page, the same way limit=0 does.
   test('GET /api/articles — a non-numeric limit or offset is ignored, not rejected', async ({ request }) => {
     const api = new ArticlesApi(request);

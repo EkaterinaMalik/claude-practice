@@ -1,10 +1,17 @@
 # API Test Coverage Recommendations
 ### Based on: *8 API Testing Mistakes That Keep QA Engineers at Junior Level* — Aston Cook
 
-**Suite state when last audited:** 2026-10-11 — 78 tests across 9 spec files. A full run reports
-78 passed. Two of those are expected `test.fail()` markers tracking known server bugs
-(`offset=-1` leaking Prisma internals, and `limit=0` returning the default page instead of an
-empty one), so the runner counts them as passing while they keep failing. `npm run typecheck` is clean.
+**Suite state when last audited:** 2026-10-17 — 79 tests across 9 spec files. A full run reports
+79 passed. Two of those are expected `test.fail()` markers tracking known server bugs
+(`limit=1.5` / `offset=1.5` leaking Prisma internals, and `limit=0` returning the default page
+instead of an empty one), so the runner counts them as passing while they keep failing.
+`npm run typecheck` is clean.
+
+**The suite caught a server fix on 2026-10-17.** `offset=-1` had crashed with a 500 leaking Prisma
+internals; it now returns 200 with the `offset=0` page. CI went red on the tracker's status
+assertion, which is exactly what that assertion is there for. The leak did not disappear, it
+narrowed to fractional values, so the tracker was repointed at `limit=1.5` / `offset=1.5` and the
+`articles.spec.ts` test became a positive one. That closed item 4 below and a third of item 1.
 
 > Keep this file in sync with `tests/`. Whenever a spec file is added, removed, or
 > meaningfully changed, re-check the section it belongs to and update the ✅ / gap lists below.
@@ -209,19 +216,18 @@ Everything below is a genuine gap, in the order worth doing:
 
 | Priority | Item | Mistake | Effort |
 |----------|------|---------|--------|
-| 1 | Migrate the three direct `request.*` calls in `error-response.spec.ts` to `…Raw` methods | #7 | Low |
+| 1 | Migrate the two remaining direct `request.post('/api/users', …)` calls in `error-response.spec.ts` to `registerRaw` | #7 | Low |
 | 2 | `tags.spec.ts` — `'returns non-empty list'` asserts what the test above it already asserts | #7 | Low |
 | 3 | The CI workflow still uses a Node 20 action that GitHub has deprecated | — | Low |
-| 4 | Add the `limit=1.5` / `offset=1.5` Prisma leak to the `test.fail()` tracker in `error-response.spec.ts` — only the status is pinned today | #3 | Low |
 
-Re-checked against the live API on 2026-10-11. Everything the September audit left open has been
-written; the four items above all came out of work done on 2026-10-11.
+Re-checked against the live API on 2026-10-17. Item 4 — tracking the fractional-value Prisma leak —
+was done that day, as the replacement for the `offset=-1` tracker the server made obsolete.
 
 **Item 1** is open work, not a rule. `error-response.spec.ts` asserts on the raw body — leak
 patterns via `response.text()`, and the exact `{ errors: … }` envelope — and until the Raw methods
-existed, three direct `request.*` calls were the only way to reach it, because the API classes
-discarded the raw body. A Raw method returns the `APIResponse` itself, so that reason is gone.
-`registerRaw` replaces two of the calls and `getAllRaw` the third.
+existed, direct `request.*` calls were the only way to reach it, because the API classes discarded
+the raw body. A Raw method returns the `APIResponse` itself, so that reason is gone. `getAllRaw`
+took over the article call on 2026-10-17; `registerRaw` replaces the two that are left.
 
 **Done since the last audit:**
 

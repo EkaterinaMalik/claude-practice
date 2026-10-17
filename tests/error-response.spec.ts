@@ -84,23 +84,52 @@ test.describe('Error responses — Shape and safety', () => {
 
   // --- Known server bug: 500 leaks raw Prisma internals ---
 
-  test('GET /api/articles?offset=-1 — 500 response should not expose internals [known server bug]', async ({ request }) => {
-    const response = await request.get('/api/articles?limit=1&offset=-1');
+  // This tracker pointed at offset=-1 until 2026-10-17, when CI went red because the server
+  // started returning 200 for it — exactly what the tracker exists to report. Re-probed the
+  // same day: the leak did not go away, it narrowed. A fractional value still reaches Prisma
+  // and the raw error comes back:
+  //   "Argument take: Got invalid value 1.5 on prisma.findManyArticle. Provided Float, expected Int."
+  // Goes through getAllRaw rather than request.get — a Raw method hands back the APIResponse,
+  // so the raw body this test needs is still there.
+  test('GET /api/articles — a fractional limit or offset 500 should not expose internals [known server bug]', async ({ request }) => {
+    const api = new ArticlesApi(request);
 
-    // Asserted BEFORE test.fail() deliberately. test.fail() marks the whole test, so if
-    // the status assertion sat under it and the server were fixed to return 400, the
-    // failure would be recorded as "expected" and this test would stay green forever -
-    // a bug tracker that can never report. Throwing here, before the marker is set,
-    // makes that case genuinely red.
-    expect(
-      response.status(),
-      'status is no longer 500 — the server behaviour changed, re-check this known bug'
-    ).toBe(500);
+    for (const params of [{ limit: 1.5 }, { offset: 1.5 }]) {
+      const response = await api.getAllRaw(params);
+      const label = JSON.stringify(params);
+
+      // Asserted BEFORE test.fail() deliberately. test.fail() marks the whole test, so if
+      // the status assertion sat under it and the server were fixed to return 400, the
+      // failure would be recorded as "expected" and this test would stay green forever -
+      // a bug tracker that can never report. Throwing here, before the marker is set,
+      // makes that case genuinely red. That is what caught the offset=-1 fix.
+      expect(
+        response.status(),
+        `${label} — status is no longer 500, the server behaviour changed, re-check this known bug`
+      ).toBe(500);
+    }
 
     // The leak below is the actual known bug. If the server stops leaking while still
     // returning 500, Playwright reports "Expected to fail, but passed" — also red. So
     // both ways of fixing the server surface here.
     test.fail();
+
+    for (const params of [{ limit: 1.5 }, { offset: 1.5 }]) {
+      const text = await (await api.getAllRaw(params)).text();
+      for (const pattern of LEAK_PATTERNS) {
+        expect(text, `${JSON.stringify(params)} — response must not contain "${pattern}"`)
+          .not.toContain(pattern);
+      }
+    }
+  });
+
+  // The offset=-1 crash this file used to track was fixed on 2026-10-17: it now returns 200
+  // with the offset=0 page. A fixed endpoint can regress quietly, so pin that it comes back
+  // clean as well as 200. articles.spec.ts asserts the page contents.
+  test('GET /api/articles?offset=-1 — the former 500 is now a clean 200', async ({ request }) => {
+    const response = await new ArticlesApi(request).getAllRaw({ limit: 1, offset: -1 });
+
+    expect(response.status(), 'offset=-1 crashed with a 500 until 2026-10-17').toBe(200);
 
     const text = await response.text();
     for (const pattern of LEAK_PATTERNS) {
