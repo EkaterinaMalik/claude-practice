@@ -47,7 +47,7 @@ npm run allure:docker         # serve the report at http://localhost:5252
 npm run allure:docker:build   # write allure-report/ to the host, then exit
 ```
 
-- **The CLI version is pinned to 2.36.0** in `docker/allure/Dockerfile`, and the pin is load-bearing for `allure:docker`. Verified 2026-09-03 against 2.46.0: `allure serve` in recent versions **refuses to bind anywhere but localhost** — it exits with `java.io.IOException: 'allure serve' is intended for local report preview only`, which makes serving from a container impossible. `allure generate` on 2.46.0 works fine and renders all 72 tests, so only the serve path is affected. Before bumping `ALLURE_VERSION`, test the serve path specifically:
+- **The CLI version is pinned to 2.36.0** in `docker/allure/Dockerfile`, and the pin is load-bearing for `allure:docker`. Verified 2026-09-03 against 2.46.0: `allure serve` in recent versions **refuses to bind anywhere but localhost** — it exits with `java.io.IOException: 'allure serve' is intended for local report preview only`, which makes serving from a container impossible. `allure generate` on 2.46.0 works fine and renders the whole suite, so only the serve path is affected. Before bumping `ALLURE_VERSION`, test the serve path specifically:
 
   ```bash
   docker build --build-arg ALLURE_VERSION=<new> -t allure-bumptest docker/allure

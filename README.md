@@ -4,7 +4,7 @@
 
 **The hard part is the target.** The API under test is live, public and shared. There is no database to reset. There is no fixture to seed. Anything a test creates is visible to the rest of the suite.
 
-So no test depends on another. A spec file registers one throwaway user and shares it for read-only work. Any test that changes user state registers its own. Each test removes what it made, and says so when removal fails. That is what makes **72 tests safe to run at once, in any order**.
+So no test depends on another. A spec file registers one throwaway user and shares it for read-only work. Any test that changes user state registers its own. Each test removes what it made, and says so when removal fails. That is what makes **78 tests safe to run at once, in any order**.
 
 Playwright and TypeScript. A full run takes about 15 seconds. No browser is launched, so no browser binaries are downloaded.
 
@@ -45,7 +45,7 @@ Node 22 is expected. If a variable is missing, the suite stops at once and names
 | `tags.spec.ts` | 3 | Tag list and tag filtering |
 | `e2e-flow.spec.ts` | 1 | One full social flow, register through cleanup |
 
-No test reads data made by another. A run registers 22 throwaway users for 72 tests: one shared per spec file where tests only read, plus a dedicated one for every test that changes user state.
+No test reads data made by another. Every run registers throwaway users as it goes: one shared per spec file where tests only read, plus a dedicated one for every test that changes user state. The exact number moves with the suite, so it is deliberately not quoted here — it was wrong for a month after the count stopped being 72.
 
 ## Running
 

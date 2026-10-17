@@ -189,7 +189,10 @@ test.describe('Articles — Public endpoints', () => {
     const api = new ArticlesApi(request);
 
     for (const params of [{ limit: 1.5 }, { offset: 1.5 }]) {
-      const response = await api.getAllRaw(params as ListArticlesParams);
+      // No cast: 1.5 is a number, so this is already a valid ListArticlesParams. The
+      // violation here is a runtime one - the server cannot handle a fraction - unlike
+      // the string case above, where the cast marks a deliberate type violation.
+      const response = await api.getAllRaw(params);
       expect(response.status(), `${JSON.stringify(params)} — known server bug`).toBe(500);
     }
   });

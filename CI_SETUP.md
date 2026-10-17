@@ -123,7 +123,7 @@ steps:
 - `actions/setup-node@v7` with `node-version: 22` — matches the local dev Node version; `cache: npm` caches `~/.npm` keyed on `package-lock.json` so subsequent runs install faster.
 - `npm ci` — clean, reproducible install from the lockfile (not `npm install`).
 - `npx playwright test` — no browsers to install via `playwright install`, since these are API-only tests (`support/api/` classes hitting the REST API directly, no `page` fixture).
-- `dorny/test-reporter@v3` — reads `junit-results/results.xml` and publishes the `Playwright Test Results` check run. `if: always()` so a failing suite is still reported. `fail-on-error: false` and `fail-on-empty: false` so this step never decides the job: the suite step already did. Both defaults are the opposite — `fail-on-empty` in particular would fire whenever an earlier step fails and the suite is skipped, since `always()` runs this step anyway and there is no `results.xml` to read. `use-actions-summary: false` is load-bearing — see step 4. Every action here is on `@v7`/`@v3` because the `@v4`/`@v1` line runs on `node20`, which GitHub has deprecated.
+- `dorny/test-reporter` — reads `junit-results/results.xml` and publishes the `Playwright Test Results` check run. `if: ${{ !cancelled() }}` so a *failing* suite is still reported, while a run cancelled by `cancel-in-progress` is not — there is no complete report to publish on a cancelled run. `fail-on-error: false` and `fail-on-empty: false` so this step never decides the job: the suite step already did. Both defaults are the opposite — `fail-on-empty` in particular would fire whenever an earlier step fails and the suite is skipped, since this step runs anyway and there is no `results.xml` to read. `use-actions-summary: false` is load-bearing — see step 4. **Every action is pinned to a commit SHA, with a `# vX.Y.Z` comment.** A tag like `@v7` can be moved by its owner at any time, and this job puts `TEST_PASSWORD` in the environment of every step — so a moved tag would run with those secrets in scope. A SHA cannot move. The version comment is not decoration: Dependabot reads it to know the current version and rewrites both parts, so keep the format. `.github/dependabot.yml` proposes the bumps monthly; the suite and `npm run check:commands` decide whether one is safe. Before the pin, four actions sat on the deprecated `node20` runtime until someone went looking.
 
 Playwright itself already detects the `CI` env var (set automatically by GitHub Actions) — `playwright.config.ts` uses that to switch to serial workers, enable retries, and forbid `.only` in CI:
 
@@ -139,7 +139,7 @@ No extra CI-detection logic was needed in the workflow itself — the config alr
 
 ```yaml
 - name: Upload Playwright HTML report
-  if: always()
+  if: ${{ !cancelled() }}
   uses: actions/upload-artifact@v7
   with:
     name: playwright-report
@@ -147,7 +147,7 @@ No extra CI-detection logic was needed in the workflow itself — the config alr
     retention-days: 7
 
 - name: Upload Allure results
-  if: always()
+  if: ${{ !cancelled() }}
   uses: actions/upload-artifact@v7
   with:
     name: allure-results
@@ -155,7 +155,7 @@ No extra CI-detection logic was needed in the workflow itself — the config alr
     retention-days: 7
 ```
 
-`if: always()` ensures reports are uploaded even when tests fail (the default is to skip subsequent steps after a failure). Both directories are gitignored locally and only produced at test-run time, so uploading them as artifacts is the only way to inspect a CI run's results afterward — they're downloadable from the run's Summary page for 7 days.
+`if: ${{ !cancelled() }}` ensures reports are uploaded even when tests fail — the default is to skip the remaining steps after a failure, which is precisely when you want the report. It is `!cancelled()` rather than `always()` because `cancel-in-progress` can kill a run mid-suite, and a half-written report is worse than none. Both directories are gitignored locally and only produced at test-run time, so uploading them as artifacts is the only way to inspect a CI run's results afterward — they're downloadable from the run's Summary page for 7 days.
 
 Only the raw `allure-results/` are uploaded, not a generated `allure-report/` — generating the HTML Allure report requires the `allure` CLI, which isn't installed in this workflow. Add an `allure generate` step (and install the CLI) if a rendered Allure report in CI becomes worth the added run time.
 
