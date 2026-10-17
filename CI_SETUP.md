@@ -112,7 +112,7 @@ steps:
 - `actions/setup-node@v7` with `node-version: 22` — matches the local dev Node version; `cache: npm` caches `~/.npm` keyed on `package-lock.json` so subsequent runs install faster.
 - `npm ci` — clean, reproducible install from the lockfile (not `npm install`).
 - `npx playwright test` — no browsers to install via `playwright install`, since these are API-only tests (`support/api/` classes hitting the REST API directly, no `page` fixture).
-- `dorny/test-reporter@v3` — reads `junit-results/results.xml` and publishes the `Playwright Test Results` check run. `if: always()` so a failing suite is still reported. `fail-on-error: false` so this step never decides the job: the suite step already did. `use-actions-summary: false` is load-bearing — see step 4. Every action here is on `@v7`/`@v3` because the `@v4`/`@v1` line runs on `node20`, which GitHub has deprecated.
+- `dorny/test-reporter@v3` — reads `junit-results/results.xml` and publishes the `Playwright Test Results` check run. `if: always()` so a failing suite is still reported. `fail-on-error: false` and `fail-on-empty: false` so this step never decides the job: the suite step already did. Both defaults are the opposite — `fail-on-empty` in particular would fire whenever an earlier step fails and the suite is skipped, since `always()` runs this step anyway and there is no `results.xml` to read. `use-actions-summary: false` is load-bearing — see step 4. Every action here is on `@v7`/`@v3` because the `@v4`/`@v1` line runs on `node20`, which GitHub has deprecated.
 
 Playwright itself already detects the `CI` env var (set automatically by GitHub Actions) — `playwright.config.ts` uses that to switch to serial workers, enable retries, and forbid `.only` in CI:
 
