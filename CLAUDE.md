@@ -2,6 +2,40 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Never commit without an explicit, current go-ahead
+
+**Make the changes, run the verification, report what changed, and stop.** Do not run `git add`,
+`git commit`, `git push`, or open a PR until Kateryna asks for it *in the message you are
+answering*.
+
+**Why:** she reviews the diff in VS Code's source control panel, which only shows **uncommitted**
+work. Committing empties that panel and ends her review mid-way, leaving her to hunt for the change
+in git history. Staging has the same effect — a staged file renders differently — so hold `git add`
+too.
+
+**What counts as a go-ahead:** an explicit instruction in the current message. "commit", "commit
+and push", "create the PR", "go ahead".
+
+**What does not count:**
+
+| Not a go-ahead | Why it gets misread |
+|---|---|
+| "do the fix", "do it", "yes, go ahead" | authorises the *edits*, nothing further |
+| "ok" / "looks good" on a progress report | acknowledgement, not instruction |
+| having approved the *previous* commit | approval is per-change, never standing |
+| a run of turns that each said "commit and push" | momentum. **This is the one that has actually failed**, on 2026-10-17 |
+| a passing mention of committing | "don't forget X after this commit" is not a request to commit |
+| your own judgement that it is small, safe or verified | not yours to make |
+
+A streak of approvals makes the next one *more* likely to be assumed and no more likely to exist.
+If in doubt, ask in one line and wait.
+
+**Always fine, unasked:** editing files, running the suite, hitting the live API, `git status`,
+`git diff`, `git log`, creating a branch. Reverting something she asked you to undo is exempt from
+the rule.
+
+Once she approves, commit, push and open the PR in one go — she has never objected to that part.
+
 ## Commands
 
 ```bash
