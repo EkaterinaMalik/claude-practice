@@ -234,7 +234,20 @@ reaching for `any` or `@ts-ignore`.
 
 ### Key constraints discovered from the live API
 
-- **Username max length: 20 characters.** Use `uniqueId()` — last 10 digits of timestamp + 3-char random suffix — to generate usernames that fit: `u_${uniqueId()}` = 14 chars max.
+- **Username max length: 20 characters.** Use `uniqueId()` — last 10 digits of timestamp + 3-char
+  random suffix — to generate usernames that fit: `u_${uniqueId()}` = 14 chars max. `auth.spec.ts`
+  now tests the limit from both sides, so if the server moves it this constraint stops being a
+  claim nobody checks.
+- **Uniqueness is enforced on username, email and article title.** A duplicate gives 422 naming the
+  field that clashes, and only that field. The article case is worth knowing: the RealWorld
+  reference implementation appends a suffix and creates a second article, while this server rejects
+  the create. That is why every title in the suite carries `uniqueId()`.
+- **A failed login does not reveal whether the account exists.** A wrong password and an address
+  that was never registered both return 403 with the identical body
+  `{"errors":{"email or password":["is invalid"]}}` — one combined key, not two. Keep it that way:
+  a test compares the two responses rather than asserting 403 on each, because separate assertions
+  would still pass if one started saying "email not found". An *empty* password is different again
+  — 422 naming the field, because validation runs before credentials are checked.
 - **Login error code is 403**, not 422, for wrong credentials on this server (deviates from the RealWorld spec).
 - **`/api/articles/feed`** requires auth; returns an empty list for new users (they follow nobody).
 - **`limit=0` is ignored, not an empty page.** Probed 2026-10-11: `GET /api/articles?limit=0`
