@@ -44,7 +44,9 @@ permissions:
   checks: write
 ```
 
-The workflow only needs to read the repo checkout; no write access to contents, PRs, or packages is granted. The one exception is `checks: write`, required by the `dorny/test-reporter` step in step 7 to publish its check run — without it the tests pass but that step fails on permissions, which reads like a test problem and isn't.
+The workflow only needs to read the repo checkout; no write access to contents, PRs, or packages is granted. The one exception is `checks: write`, required by the `dorny/test-reporter` step in step 6 to publish its check run — without it the tests pass but that step fails on permissions, which reads like a test problem and isn't.
+
+**`checks: write` only does anything because the step passes `use-actions-summary: false`.** That input defaults to `'true'`, and on that path the action writes the report to the job summary and never calls `checks.create` — no check run on the commit or PR, no inline annotations on failing tests, and this permission unused. The default is `'true'` in the `v1` tag too, so it was never working before 2026-10-17; the v3 bump did not cause it. If you ever see the `Playwright Test Results` check run disappear, look at that input before looking here.
 
 ### 5. Configure the job environment
 
@@ -91,10 +93,10 @@ A 15-minute timeout guards against a hung run consuming Actions minutes indefini
 ```yaml
 steps:
   - name: Checkout code
-    uses: actions/checkout@v4
+    uses: actions/checkout@v7
 
   - name: Setup Node.js
-    uses: actions/setup-node@v4
+    uses: actions/setup-node@v7
     with:
       node-version: 22
       cache: npm
@@ -106,10 +108,11 @@ steps:
     run: npx playwright test
 ```
 
-- `actions/checkout@v4` — pulls the repo.
-- `actions/setup-node@v4` with `node-version: 22` — matches the local dev Node version; `cache: npm` caches `~/.npm` keyed on `package-lock.json` so subsequent runs install faster.
+- `actions/checkout@v7` — pulls the repo.
+- `actions/setup-node@v7` with `node-version: 22` — matches the local dev Node version; `cache: npm` caches `~/.npm` keyed on `package-lock.json` so subsequent runs install faster.
 - `npm ci` — clean, reproducible install from the lockfile (not `npm install`).
 - `npx playwright test` — no browsers to install via `playwright install`, since these are API-only tests (`support/api/` classes hitting the REST API directly, no `page` fixture).
+- `dorny/test-reporter@v3` — reads `junit-results/results.xml` and publishes the `Playwright Test Results` check run. `if: always()` so a failing suite is still reported. `fail-on-error: false` so this step never decides the job: the suite step already did. `use-actions-summary: false` is load-bearing — see step 4. Every action here is on `@v7`/`@v3` because the `@v4`/`@v1` line runs on `node20`, which GitHub has deprecated.
 
 Playwright itself already detects the `CI` env var (set automatically by GitHub Actions) — `playwright.config.ts` uses that to switch to serial workers, enable retries, and forbid `.only` in CI:
 
@@ -126,7 +129,7 @@ No extra CI-detection logic was needed in the workflow itself — the config alr
 ```yaml
 - name: Upload Playwright HTML report
   if: always()
-  uses: actions/upload-artifact@v4
+  uses: actions/upload-artifact@v7
   with:
     name: playwright-report
     path: playwright-report/
@@ -134,7 +137,7 @@ No extra CI-detection logic was needed in the workflow itself — the config alr
 
 - name: Upload Allure results
   if: always()
-  uses: actions/upload-artifact@v4
+  uses: actions/upload-artifact@v7
   with:
     name: allure-results
     path: allure-results/
