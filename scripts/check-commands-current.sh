@@ -27,21 +27,39 @@ fail=0
 banned=$(cat <<'ROWS'
 const \{ status	the API classes return typed payloads, not result objects — a wrapper asserts its own status
 \bz\.object\(	schemas are z.strictObject — z.object strips unknown keys and passes
-\.catch\(\(error\)	a Raw method never throws on a non-2xx, so .catch cannot detect a failed cleanup — use cleanup()
+\.catch\(\(?error	a Raw method never throws on a non-2xx, so .catch cannot detect a failed cleanup — use cleanup()
 \.catch\(\(\) =>	same — a swallowed cleanup failure looks identical to a healthy run
 createAuthContext\(playwright\)	createAuthContext() takes no arguments since #9
 \brequest\.(get|post|put|delete)\(	specs go through the API layer — use a Raw method for the untouched response
 ROWS
 )
 
-# Only the fenced code blocks are checked. Prose that explains why NOT to use a
-# pattern has to be able to name it — the z.strictObject section does exactly that.
+# Only the fenced code blocks are checked, and only the ones meant to be copied.
+#
+# Two exclusions, both load-bearing:
+#   - PROSE is never scanned. A section explaining why NOT to use a pattern has to be
+#     able to name it; the z.strictObject section does exactly that.
+#   - A block whose comments mark it BROKEN / DO NOT / ANTI-PATTERN is skipped whole.
+#     These files teach by counter-example, and the counter-example IS the banned
+#     pattern. Before this existed, the API skill's own `.catch` counter-example
+#     passed only because the regex happened not to match the exact spelling - luck,
+#     not design. The regex is tighter now, so the marker does the work instead.
 code_lines() {
   # shellcheck disable=SC2086
   find $dirs -name '*.md' -type f 2>/dev/null | sort | while IFS= read -r f; do
     awk -v f="$f" '
-      /^```/ { inblock = !inblock; next }
-      inblock { print f ":" NR ":" $0 }
+      /^```/ {
+        if (!inblock) { inblock = 1; n = 0; skip = 0; delete buf }
+        else {
+          if (!skip) for (i = 1; i <= n; i++) print buf[i]
+          inblock = 0
+        }
+        next
+      }
+      inblock {
+        if ($0 ~ /BROKEN|DO NOT|ANTI-PATTERN/) skip = 1
+        buf[++n] = f ":" NR ":" $0
+      }
     ' "$f"
   done
 }
@@ -58,12 +76,19 @@ while IFS=$'\t' read -r pattern reason; do
   done < <(printf '%s\n' "$blocks" | grep -E "$pattern")
 done <<< "$banned"
 
-# Every xxxApi.method( named in a command must exist in support/api/.
+# Every method called on an API object must exist in support/api/.
+#
+# The receiver has to look like one - `api.`, `articlesApi.`, `new ArticlesApi(request).`.
+# An earlier version matched any identifier followed by `.get*(`, which makes anything
+# non-API in a snippet a false positive: Playwright's own `page.getByRole(` was reported
+# as a missing API method. Matching on the receiver keeps the check honest.
 real=$(grep -ho "async [a-zA-Z]*" support/api/*.ts | sed 's/async //' | grep -v '^function$' | sort -u)
 while IFS= read -r m; do
   [ -z "$m" ] && continue
   grep -qx "$m" <<< "$real" || { echo "  no such method '$m' in support/api/"; fail=1; }
-done < <(printf '%s\n' "$blocks" | grep -ohE "\.(get|create|update|delete|follow|unfollow|favorite|unfavorite|list|register|login)[a-zA-Z]*(Raw)?\(" | tr -d '.(' | sort -u)
+done < <(printf '%s\n' "$blocks" \
+  | grep -ohE "[A-Za-z]*[Aa]pi(\([^)]*\))?\.[a-zA-Z]+\(" \
+  | sed -E 's/.*\.([a-zA-Z]+)\($/\1/' | sort -u)
 
 if [ "$fail" = 1 ]; then
   echo
