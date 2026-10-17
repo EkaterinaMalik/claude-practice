@@ -17,7 +17,14 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # Pinned, not `ubuntu-latest`. GitHub migrates that label to Ubuntu 26 gradually
+    # between 2026-10-19 and 2026-11-19, so during that window two runs of the same
+    # commit can land on different images. performance.spec.ts asserts five 2000ms
+    # thresholds, and a borderline timing flipping on a kernel change is indistinguishable
+    # from a real regression. 24.04 is what ubuntu-latest resolved to before the rollout.
+    # REVISIT after 2026-11-19: drop the pin, or move to ubuntu-26.04 and re-measure the
+    # thresholds deliberately. Tracked in TEST_RECOMMENDATIONS.md.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
       # Config lives in repo Variables (visible), credentials in repo Secrets (masked).

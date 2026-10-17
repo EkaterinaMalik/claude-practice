@@ -20,8 +20,12 @@ narrowed to fractional values, so the tracker was repointed at `limit=1.5` / `of
 
 ## What changed since the 2026-09-16 audit
 
-No test was added or removed. The count is the same 72. What changed is that several of them now
-test something they previously only appeared to test. That is a coverage change, so it belongs here.
+**This section is a record of that audit, not of the suite today.** The counts in it are the
+counts of the day; the current figure is in the suite-state line at the top of this file.
+
+At that point no test had been added or removed — the count was still 72. What changed was that
+several of them began testing something they had previously only appeared to test. That is a
+coverage change, so it belongs here.
 
 - **The known-bug tracker could not report.** In `error-response.spec.ts`, `test.fail()` sat above
   the status assertion. It marks the whole test. So if the server were fixed to return 400, that
@@ -80,10 +84,17 @@ test something they previously only appeared to test. That is a coverage change,
 - ✅ Special characters: `<script>alert(1)</script>` stored verbatim in article title
 - ✅ SQL injection string `' OR 1=1; --` stored verbatim in article title
 
-**Gaps to address:**
-- Special characters / injection strings in article **body** and **description** — currently only `title` is exercised
-- Non-numeric pagination params (`limit=abc`, `offset=abc`) — undefined behavior, worth pinning down
-- Genuinely **omitted** registration fields (keys absent, not empty strings) — the current test sends `''`, which is a different code path
+- ✅ Special characters / injection strings in article **body** and **description** as well as
+  `title`. Each one is re-fetched after the write, so the test proves the value was *stored* rather
+  than echoed back by the create response. Added 2026-10-11.
+- ✅ Non-numeric pagination params. `limit=abc` and `offset=abc` are ignored and return the default
+  page — the behaviour was undefined, now it is pinned. A fractional value is a different story and
+  is tracked as a server bug; see Mistake #3. Added 2026-10-11.
+- ✅ Genuinely **omitted** registration fields, keys absent rather than `''`. A separate code path:
+  the value arrives as `undefined`. This server returns 422 either way and names each missing
+  field, which `auth.spec.ts` now asserts per field. Added 2026-10-11.
+
+**No gaps outstanding for this mistake.**
 
 ---
 
@@ -99,10 +110,12 @@ test something they previously only appeared to test. That is a coverage change,
 - ✅ Cross-user `PUT /api/articles/:slug` → 403
 - ✅ Cross-user `DELETE /api/articles/:slug` → 403
 
-**Gaps to address:**
-- Malformed token against a **write** endpoint (e.g. `POST /api/articles`) — currently only the read path is covered
+- ✅ Malformed token against a **write** endpoint. `POST /api/articles` is sent four malformed
+  shapes — garbage after the scheme, a scheme with no token, a token with no scheme, and a
+  truncated JWT — and all four give 401. Added 2026-10-11; the read path was already covered.
 - ✅ Token in the wrong header scheme. **This server accepts `Bearer`.** `GET /api/user` returns 200 and `POST /api/articles` returns 201 with a valid token under `Bearer`; the RealWorld spec says `Token`. `auth.spec.ts` pins the leniency rather than asserting a 401, which would fail. It also pins that the scheme is case-sensitive: `token` and `bearer` give 401.
-- Expired tokens: not testable against this server — no way to mint or age a token. Out of scope unless the target API changes.
+**One gap outstanding, and it is not actionable:** expired tokens. There is no way to mint or age
+a token against this server, so it stays out of scope unless the target API changes.
 
 ---
 
@@ -212,17 +225,22 @@ without — so each endpoint's real shape is pinned.
 
 ## Remaining Work
 
-**Nothing open.** Every item this audit raised has been written, and the last one — the deprecated
-Node 20 actions in the workflow — closed on 2026-10-17.
+One open item, and it is a dated one:
 
-That is a statement about this checklist, not about the suite. It means the "8 API Testing
-Mistakes" list no longer points at anything missing here. Coverage gaps the checklist never asked
-about are still gaps, and the live API keeps changing underneath the suite — `offset=-1` was fixed
-the same week. Re-run the audit rather than trusting this line.
+| Priority | Item | Mistake | Effort |
+|----------|------|---------|--------|
+| 1 | **Revisit the `ubuntu-24.04` pin after 2026-11-19.** `runs-on` was pinned on 2026-10-17 because GitHub migrates `ubuntu-latest` to Ubuntu 26 gradually from 10-19 to 11-19. Mid-window, two runs of the same commit can land on different images, and `performance.spec.ts` asserts five 2000 ms thresholds — a borderline timing flipping on a kernel change is indistinguishable from a real regression. After the window: drop the pin, or move to `ubuntu-26.04` and re-measure the thresholds deliberately. **A pin left forever eventually fails when 24.04 is retired.** | #4 | Low |
 
-When an item is added back, put it in a table here. Numbers get renumbered as items close, so do
-not cite them from a code comment; describe the work instead. Three comments in `tests/` cited
-numbers that had drifted onto unrelated items before this was fixed.
+Everything the "8 API Testing Mistakes" checklist asked for has been written; the last of those
+items — the deprecated Node 20 actions — closed on 2026-10-17.
+
+**That is a statement about this checklist, not about the suite.** Coverage gaps the checklist
+never asked about are still gaps, and the live API keeps changing underneath the suite —
+`offset=-1` was fixed the same week. Re-run the audit rather than trusting this line.
+
+Numbers in the table get renumbered as items close, so do not cite them from a code comment;
+describe the work instead. Three comments in `tests/` cited numbers that had drifted onto
+unrelated items before this was fixed.
 
 Re-checked against the live API on 2026-10-17.
 
@@ -236,8 +254,10 @@ Re-checked against the live API on 2026-10-17.
   `checkout@v7` blocks fork checkouts for `pull_request_target`, which this workflow does not use;
   `setup-node@v5`/`v6` changed cache auto-detection, and this workflow passes `cache: npm`
   explicitly; `upload-artifact@v7`'s new `archive` input is opt-in.
-- **Next: `ubuntu-latest` migrates to Ubuntu 26 from 2026-10-19.** The runner already prints a
-  notice. Nothing to do yet — noted so an unexplained CI change that week has an obvious suspect.
+- **The runner image is pinned to `ubuntu-24.04`.** `ubuntu-latest` migrates to Ubuntu 26 between
+  2026-10-19 and 2026-11-19, and this suite has wall-clock assertions. Pinned 2026-10-17; the pin
+  is temporary and is the one open item in the table above. (This was first written here as a
+  "nothing to do yet" note under Done — which is precisely where a dated item goes to be missed.)
 - **Every spec now goes through the API layer.** `error-response.spec.ts` was the last file calling
   `request.*` directly. Those calls existed because the classes used to discard the raw body, and
   this spec asserts on it — leak patterns via `response.text()`, and the exact `{ errors: … }`
