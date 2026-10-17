@@ -280,6 +280,25 @@ reaching for `any` or `@ts-ignore`.
   tracker's status assertion — `Expected: 500, Received: 200` — which is what that assertion is
   for. Worth knowing before writing a tracker: put the status check *above* `test.fail()` or a
   server fix is recorded as an expected failure and nobody is told.
+- **Favouriting is counted, not idempotent.** Probed 2026-10-17: the same user favouriting the
+  same article twice returns 200 both times and `favoritesCount` goes 0 → 1 → 2. Unfavouriting
+  walks it back one at a time. One account can inflate the count without limit, which makes the
+  seeded articles' counts (up to 2269) meaningless. Tracked with `test.fail()` in
+  `articles.spec.ts`.
+- **An unknown username or slug gives 500, not 404** — and leaks Prisma internals. Probed
+  2026-10-17 on three routes: `POST`/`DELETE /api/profiles/<unknown>/follow` and
+  `POST /api/articles/<unknown>/comments`. Same bug class as the fractional pagination 500. Do not
+  write a test expecting 404 from these; the leak is tracked in `error-response.spec.ts`.
+  **But distinguish the cases:** unfollowing a *real* user you never followed is a clean 200 no-op.
+  The 500 is about the missing user, not the missing relationship — an earlier test assumed the
+  opposite and was wrong.
+- **A user may follow themselves.** 200, `following: true`. The RealWorld spec does not define it
+  and most implementations reject it, so `profiles.spec.ts` pins the leniency rather than
+  asserting a 422 that would fail.
+- **Cross-user writes are not consistent.** An article returns 403; a comment returns **404 with an
+  empty `{}` body**. Both refuse the write — only the status and the shape differ.
+- **404 bodies are not consistent either.** `GET /api/articles/<unknown>` returns
+  `{"errors":{"article":["not found"]}}`, while `PUT`/`DELETE` on the same slug return a bare `{}`.
 - All tests register fresh throw-away users (`example.com` emails) — no shared credentials file.
 
 ### Auth pattern

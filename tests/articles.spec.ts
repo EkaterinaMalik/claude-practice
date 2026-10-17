@@ -1,8 +1,10 @@
 import { test, expect, APIRequestContext } from '@playwright/test';
 import { ArticlesApi, CreateArticleInput, ListArticlesParams } from '../support/api/ArticlesApi';
 import { TagsApi } from '../support/api/TagsApi';
+import { AuthApi } from '../support/api/AuthApi';
+import { ProfilesApi } from '../support/api/ProfilesApi';
 import { Article } from '../support/types';
-import { createAuthContext, uniqueId, cleanup, API_BASE } from '../support/helpers';
+import { createAuthContext, uniqueId, cleanup, API_BASE, generateEmail, TEST_PASSWORD } from '../support/helpers';
 
 test.describe('Articles — Public endpoints', () => {
   test('GET /api/articles — returns articles list with default pagination', async ({ request }) => {
@@ -444,6 +446,44 @@ test.describe('Articles — Authenticated endpoints', () => {
     });
   });
 
+  // Probed 2026-10-17: favouriting the same article twice as the SAME user returns 200 both
+  // times and increments favoritesCount each time — 0, 1, 2 — and unfavouriting walks it back
+  // down one at a time. So a single account can inflate the count without limit. A seeded
+  // article shows 2269 favourites, which this makes meaningless as a measure of popularity.
+  test('POST /api/articles/:slug/favorite — favouriting twice should not count twice [known server bug]', async () => {
+    let created: Article;
+
+    await test.step('Create an article and favourite it once', async () => {
+      created = await api.createArticle({
+        title: `PW DblFav ${uniqueId()}`,
+        description: 'For the double-favourite bug',
+        body: 'Article for the double-favourite bug.',
+        tagList: [],
+      });
+
+      const once = await api.favorite(created.slug);
+      // Asserted before test.fail(): the first favourite must work, or the test below
+      // proves nothing. A break here is a genuine failure, not the tracked bug.
+      expect(once.favorited, 'the first favourite should register').toBe(true);
+      expect(once.favoritesCount, 'one favourite should count once').toBe(1);
+    });
+
+    await test.step('Favourite it a second time as the same user', async () => {
+      const twice = await api.favorite(created.slug);
+
+      // The bug. favorite() already asserted the 200, so if the server starts rejecting a
+      // repeat favourite outright this fails above instead — also red, which is correct.
+      test.fail();
+      expect(twice.favoritesCount, 'the same user favouriting twice must not count twice')
+        .toBe(1);
+    });
+
+    await test.step('Cleanup: unfavourite and delete the article', async () => {
+      await cleanup(`unfavorite ${created.slug}`, () => api.unfavoriteRaw(created.slug));
+      await cleanup(`article ${created.slug}`, () => api.deleteRaw(created.slug));
+    });
+  });
+
   test('GET /api/articles/feed — is empty for a user who follows nobody', async () => {
     const { articles, articlesCount } = await api.getFeed();
 
@@ -453,6 +493,70 @@ test.describe('Articles — Authenticated endpoints', () => {
     // perturb this one.
     expect(articles).toHaveLength(0);
     expect(articlesCount).toBe(0);
+  });
+
+  // The other half of the feed, and the only thing it exists to do. The test above only
+  // proves an empty feed stays empty, which would also pass if the feed were broken.
+  // Probed 2026-10-17: following an author does surface their article here.
+  test('GET /api/articles/feed — shows an article by a user you follow', async ({ playwright }) => {
+    let authorName: string;
+    let authorCtx: APIRequestContext;
+    let authorApi: ArticlesApi;
+    let slug: string;
+
+    await test.step('A second user registers and publishes an article', async () => {
+      const id = uniqueId();
+      authorName = `u_${id}`;
+      authorCtx = await playwright.request.newContext({
+        baseURL: API_BASE,
+        extraHTTPHeaders: { 'Content-Type': 'application/json' },
+      });
+      const author = await new AuthApi(authorCtx).register({
+        username: authorName,
+        email: generateEmail('fed', id),
+        password: TEST_PASSWORD,
+      });
+
+      // Re-create the context with the author's token so they can publish.
+      await authorCtx.dispose();
+      authorCtx = await playwright.request.newContext({
+        baseURL: API_BASE,
+        extraHTTPHeaders: {
+          'Content-Type': 'application/json',
+          Authorization: `Token ${author.token}`,
+        },
+      });
+      authorApi = new ArticlesApi(authorCtx);
+
+      const article = await authorApi.createArticle({
+        title: `PW Feed ${id}`,
+        description: 'Should appear in a follower feed',
+        body: 'Article body for the feed test.',
+        tagList: [],
+      });
+      slug = article.slug;
+    });
+
+    await test.step('This block\'s user follows the author', async () => {
+      const profile = await new ProfilesApi(authCtx).follow(authorName);
+      expect(profile.following, 'the follow must register, or the feed proves nothing').toBe(true);
+    });
+
+    await test.step('The article now appears in the follower feed', async () => {
+      const { articles, articlesCount } = await api.getFeed();
+
+      expect(articlesCount, 'the feed should no longer be empty').toBeGreaterThan(0);
+      expect(
+        articles.map(a => a.slug),
+        'the followed author\'s article should be in the feed'
+      ).toContain(slug);
+    });
+
+    await test.step('Cleanup: unfollow, delete the article, dispose the author context', async () => {
+      await cleanup(`unfollow ${authorName}`, () => new ProfilesApi(authCtx).unfollowRaw(authorName));
+      await cleanup(`article ${slug}`, () => authorApi.deleteRaw(slug));
+      await authorCtx.dispose();
+    });
   });
 
   test('DELETE /api/articles/:slug — deletes own article', async () => {

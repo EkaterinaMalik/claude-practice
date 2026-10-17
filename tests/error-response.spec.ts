@@ -1,7 +1,8 @@
-import { test, expect, APIRequestContext } from '@playwright/test';
+import { test, expect, APIRequestContext, APIResponse } from '@playwright/test';
 import { ArticlesApi } from '../support/api/ArticlesApi';
 import { AuthApi } from '../support/api/AuthApi';
 import { CommentsApi } from '../support/api/CommentsApi';
+import { ProfilesApi } from '../support/api/ProfilesApi';
 import { createAuthContext, uniqueId, cleanup } from '../support/helpers';
 import { ErrorSchema } from '../support/schemas';
 
@@ -121,6 +122,43 @@ test.describe('Error responses — Shape and safety', () => {
         expect(text, `${JSON.stringify(params)} — response must not contain "${pattern}"`)
           .not.toContain(pattern);
       }
+    }
+  });
+
+  // The same leak, reached three other ways. Probed 2026-10-17: every one of these is an
+  // unresolvable reference that reaches Prisma, and Prisma's own message comes back verbatim -
+  // table and operation names included. The statuses are pinned in profiles.spec.ts and
+  // comments.spec.ts; this tracks the leak.
+  test('Unresolvable references leak Prisma internals on 500 [known server bug]', async () => {
+    const ctx = await createAuthContext();
+    const profilesApi = new ProfilesApi(ctx);
+
+    const cases: Record<string, () => Promise<APIResponse>> = {
+      'follow a user who does not exist': () => profilesApi.followRaw(`ghost_${uniqueId()}`),
+      'unfollow a user who does not exist': () => profilesApi.unfollowRaw(`ghost_${uniqueId()}`),
+      'comment on an article that does not exist': () =>
+        new CommentsApi(ctx).createRaw(`no-such-article-${uniqueId()}`, 'orphan'),
+    };
+
+    try {
+      // Statuses first, above test.fail(), so a server fix is genuinely red rather than
+      // recorded as expected. Collected before the marker is set.
+      const bodies: Record<string, string> = {};
+      for (const [label, call] of Object.entries(cases)) {
+        const response = await call();
+        expect(response.status(), `${label} — no longer 500, re-check this known bug`).toBe(500);
+        bodies[label] = await response.text();
+      }
+
+      test.fail();
+
+      for (const [label, text] of Object.entries(bodies)) {
+        for (const pattern of LEAK_PATTERNS) {
+          expect(text, `${label} — response must not contain "${pattern}"`).not.toContain(pattern);
+        }
+      }
+    } finally {
+      await ctx.dispose();
     }
   });
 

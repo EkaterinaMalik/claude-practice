@@ -114,6 +114,47 @@ test.describe('Comments', () => {
     expect(response.status()).toBe(422);
     expect((await response.json()).errors?.body).toBeDefined();
   });
+
+  // Same bug class as the fractional pagination 500 and the follow ones in profiles.spec.ts:
+  // the slug never resolves, the unresolved reference reaches Prisma, and its own error comes
+  // back. Probed 2026-10-17 — "Argument data.article.connect of type ArticleWhereUniqueInput
+  // needs at least one argument." A 404 would be the right answer. The leak is tracked in
+  // error-response.spec.ts; this pins the status.
+  test('POST /api/articles/:slug/comments — commenting on a non-existent article returns 500', async () => {
+    const response = await commentsApi.createRaw(`no-such-article-${Date.now()}`, 'orphan comment');
+
+    expect(response.status(), 'known server bug: no 404 for an unknown slug').toBe(500);
+  });
+
+  // Articles return 403 for a cross-user write. Comments do not: probed 2026-10-17, deleting
+  // someone else's comment returns 404 with an empty `{}` body. The comment is NOT deleted,
+  // so the protection works - only the status and the body shape differ from articles.
+  test('DELETE /api/articles/:slug/comments/:id — another user cannot delete your comment', async () => {
+    let comment: Comment;
+    let otherCtx: APIRequestContext;
+
+    await test.step('Owner adds a comment', async () => {
+      comment = await commentsApi.create(articleSlug, `Owned comment ${Date.now()}`);
+    });
+
+    await test.step('A second user tries to delete it', async () => {
+      otherCtx = await createAuthContext();
+      const response = await new CommentsApi(otherCtx).deleteRaw(articleSlug, comment.id);
+
+      expect(response.status(), 'a cross-user delete must not succeed').toBe(404);
+    });
+
+    await test.step('The comment is still there', async () => {
+      const comments = await commentsApi.list(articleSlug);
+      expect(comments.map(c => c.id), 'the comment must survive the failed delete')
+        .toContain(comment.id);
+    });
+
+    await test.step('Cleanup: owner deletes the comment, dispose the second context', async () => {
+      await cleanup(`comment ${comment.id}`, () => commentsApi.deleteRaw(articleSlug, comment.id));
+      await otherCtx.dispose();
+    });
+  });
 });
 
 //{"comment":{}}

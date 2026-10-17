@@ -79,6 +79,71 @@ test.describe('Profiles', () => {
     });
   });
 
+  // Probed 2026-10-17: the server allows it — 200, with following: true. The RealWorld spec
+  // does not define self-following, and most implementations reject it, so this pins the
+  // leniency rather than asserting a 422 that would fail today. Same reasoning as the
+  // `Bearer` scheme in auth.spec.ts: record what the server does, and find out when it changes.
+  test('POST /api/profiles/:username/follow — a user is allowed to follow themselves', async () => {
+    const authCtx = await createAuthContext();
+    const api = new ProfilesApi(authCtx);
+
+    try {
+      const self = await new AuthApi(authCtx).getCurrentUser();
+      const profile = await api.follow(self.username);
+
+      expect(profile.username).toBe(self.username);
+      expect(profile.following, 'this server permits self-following').toBe(true);
+
+      await cleanup(`unfollow self ${self.username}`, () => api.unfollowRaw(self.username));
+    } finally {
+      await authCtx.dispose();
+    }
+  });
+
+  // Same bug class as the fractional pagination 500: a reference the server cannot resolve
+  // reaches the query layer and Prisma's own error comes back. Probed 2026-10-17 — the body
+  // carries "Invalid `prisma.user.update()` invocation". A 404 would be the right answer.
+  // The leak itself is tracked in error-response.spec.ts; this pins the status.
+  //
+  // Both verbs, because they fail through different Prisma operations — connect for follow,
+  // disconnect for unfollow — and a fix to one need not fix the other.
+  test('POST and DELETE /api/profiles/:username/follow — an unknown username returns 500', async () => {
+    const authCtx = await createAuthContext();
+    const api = new ProfilesApi(authCtx);
+
+    try {
+      for (const [label, call] of Object.entries({
+        follow: () => api.followRaw(`ghost_${uniqueId()}`),
+        unfollow: () => api.unfollowRaw(`ghost_${uniqueId()}`),
+      })) {
+        const response = await call();
+        expect(response.status(), `${label} an unknown user — known server bug, expected 404`)
+          .toBe(500);
+      }
+    } finally {
+      await authCtx.dispose();
+    }
+  });
+
+  // The counterpart, and the reason the test above says "unknown username" rather than
+  // "no such follow". Probed 2026-10-17: unfollowing a real user you never followed is a
+  // clean 200 no-op, which is correct and worth pinning so it is not "fixed" into a 404.
+  // An earlier version of these tests assumed this case was the 500 and was wrong - the
+  // status assertion caught it.
+  test('DELETE /api/profiles/:username/follow — unfollowing someone you never followed is a no-op', async ({ playwright }) => {
+    const authCtx = await createAuthContext();
+
+    try {
+      const stranger = await createTargetUser(playwright);
+      const profile = await new ProfilesApi(authCtx).unfollow(stranger);
+
+      expect(profile.username).toBe(stranger);
+      expect(profile.following, 'still not following, and no error').toBe(false);
+    } finally {
+      await authCtx.dispose();
+    }
+  });
+
   test('POST /api/profiles/:username/follow — returns 401 without token', async ({ request }) => {
     const api = new ProfilesApi(request);
     const response = await api.followRaw('any-user');
