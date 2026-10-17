@@ -1,10 +1,17 @@
 # API Test Coverage Recommendations
 ### Based on: *8 API Testing Mistakes That Keep QA Engineers at Junior Level* — Aston Cook
 
-**Suite state when last audited:** 2026-10-10 — 72 tests across 9 spec files. A full run reports
-72 passed. Two of those are expected `test.fail()` markers tracking known server bugs
-(`offset=-1` leaking Prisma internals, and `limit=0` returning the default page instead of an
-empty one), so the runner counts them as passing while they keep failing. `npm run typecheck` is clean.
+**Suite state when last audited:** 2026-10-17 — 79 tests across 9 spec files. A full run reports
+79 passed. Two of those are expected `test.fail()` markers tracking known server bugs
+(`limit=1.5` / `offset=1.5` leaking Prisma internals, and `limit=0` returning the default page
+instead of an empty one), so the runner counts them as passing while they keep failing.
+`npm run typecheck` is clean.
+
+**The suite caught a server fix on 2026-10-17.** `offset=-1` had crashed with a 500 leaking Prisma
+internals; it now returns 200 with the `offset=0` page. CI went red on the tracker's status
+assertion, which is exactly what that assertion is there for. The leak did not disappear, it
+narrowed to fractional values, so the tracker was repointed at `limit=1.5` / `offset=1.5` and the
+`articles.spec.ts` test became a positive one. That closed item 4 below and a third of item 1.
 
 > Keep this file in sync with `tests/`. Whenever a spec file is added, removed, or
 > meaningfully changed, re-check the section it belongs to and update the ✅ / gap lists below.
@@ -86,13 +93,15 @@ test something they previously only appeared to test. That is a coverage change,
 
 **What we have:**
 - ✅ Missing token → 401: `GET /api/user`, `PUT /api/user`, `POST /api/articles`, `DELETE /api/articles/:slug`, `GET /api/articles/feed`, `POST /api/articles/:slug/comments`, `DELETE /api/articles/:slug/comments/:id`, `POST /api/profiles/:username/follow`, `DELETE /api/profiles/:username/follow`
-- ✅ Malformed token (`Token not-a-real-token`) → 401 on `GET /api/user`
+- ✅ Malformed token → 401 on `GET /api/user` (read) and on `POST /api/articles` (write). The write
+  case covers four shapes: garbage after the scheme, a scheme with no token, a token with no
+  scheme, and a truncated JWT
 - ✅ Cross-user `PUT /api/articles/:slug` → 403
 - ✅ Cross-user `DELETE /api/articles/:slug` → 403
 
 **Gaps to address:**
 - Malformed token against a **write** endpoint (e.g. `POST /api/articles`) — currently only the read path is covered
-- Token in the wrong header scheme. **Probed 2026-10-10: this server accepts `Bearer`.** `GET /api/user` returned 200 and `POST /api/articles` returned 201 with a valid token under `Bearer`. The RealWorld spec says `Token`. So a test here pins the leniency; asserting 401 would fail.
+- ✅ Token in the wrong header scheme. **This server accepts `Bearer`.** `GET /api/user` returns 200 and `POST /api/articles` returns 201 with a valid token under `Bearer`; the RealWorld spec says `Token`. `auth.spec.ts` pins the leniency rather than asserting a 401, which would fail. It also pins that the scheme is case-sensitive: `token` and `bearer` give 401.
 - Expired tokens: not testable against this server — no way to mint or age a token. Out of scope unless the target API changes.
 
 ---
@@ -207,18 +216,46 @@ Everything below is a genuine gap, in the order worth doing:
 
 | Priority | Item | Mistake | Effort |
 |----------|------|---------|--------|
-| 1 | Malformed token against a write endpoint (`POST /api/articles`) | #2 | Low |
-| 2 | Pin that this server accepts `Bearer` as well as `Token` — it does, so the test asserts the leniency, not a 401 | #2 | Low |
-| 3 | Special chars / injection strings in article `body` and `description` | #1 | Low |
-| 4 | Non-numeric pagination params (`limit=abc`, `offset=abc`) | #1 | Low |
-| 5 | Registration with omitted (not empty) required fields | #1 | Low |
-| 6 | Type `article` as optional on a non-2xx result, now that `tsc` can verify the fallout | #7 | Medium |
+| 1 | Migrate the two remaining direct `request.post('/api/users', …)` calls in `error-response.spec.ts` to `registerRaw` | #7 | Low |
+| 2 | `tags.spec.ts` — `'returns non-empty list'` asserts what the test above it already asserts | #7 | Low |
+| 3 | The CI workflow still uses a Node 20 action that GitHub has deprecated | — | Low |
 
-Re-checked against the live API on 2026-10-10. Five of the six are still open. The sixth, strict
-schemas, is done — see #7 above.
+Re-checked against the live API on 2026-10-17. Item 4 — tracking the fractional-value Prisma leak —
+was done that day, as the replacement for the `offset=-1` tracker the server made obsolete.
 
-Item 6 is new. The result types claim `article` is always present. That is false on a non-2xx. The
-fix was skipped in September for a good reason: 23 places destructure it, and there was no
-`tsconfig.json` to verify the fallout. There is one now.
+**Item 1** is open work, not a rule. `error-response.spec.ts` asserts on the raw body — leak
+patterns via `response.text()`, and the exact `{ errors: … }` envelope — and until the Raw methods
+existed, direct `request.*` calls were the only way to reach it, because the API classes discarded
+the raw body. A Raw method returns the `APIResponse` itself, so that reason is gone. `getAllRaw`
+took over the article call on 2026-10-17; `registerRaw` replaces the two that are left.
+
+**Done since the last audit:**
+
+- **`Bearer` is accepted as well as `Token`, and the scheme is case-sensitive.** `auth.spec.ts`
+  pins the leniency on a read and a write, since asserting 401 would fail. Probed 2026-10-11:
+  `Token` and `Bearer` both give 200/201, while `token` and `bearer` give 401.
+- **Special characters in `description` and `body`.** `articles.spec.ts` sends a script tag, a SQL
+  injection string, unicode with emoji, and newlines/tabs, then re-fetches each article to prove
+  the value was stored rather than echoed. All four survive verbatim.
+- **Non-numeric pagination is ignored, not rejected.** `limit=abc` and `offset=abc` return 200 with
+  the default page. A fractional value is different: `limit=1.5` and `offset=1.5` return 500
+  leaking Prisma internals, the same bug class as `offset=-1`. Both statuses are now pinned.
+- **Registration with an omitted key, not an empty string.** A missing key is a separate code path
+  from `''`. Probed 2026-10-11: this server returns 422 either way and names each missing field,
+  which `auth.spec.ts` now asserts per field.
+
+- **A malformed token is rejected by a write endpoint.** `articles.spec.ts` sends four malformed
+  shapes to `POST /api/articles` — garbage after the scheme, a scheme with no token, a token with
+  no scheme, and a truncated JWT — and asserts 401 for each. Probed 2026-10-11; all four are
+  rejected. The read-side case was already covered in `auth.spec.ts`.
+- **Strict zod schemas** — all six are `z.strictObject`, so an undeclared response field fails the
+  test instead of being silently stripped. See #7 above.
+- **`article` is no longer typed as present on a non-2xx.** The old entry asked for it to be typed
+  optional; the Raw/wrapper split solved it structurally instead. A wrapper asserts the status
+  before it reads a payload, so a happy path cannot reach an undefined one, and a negative test
+  calls the `…Raw` twin and never sees a payload at all. No caller has to check.
+- **Four tests that could not fail** were rewritten on 2026-10-11: `limit=0`, `limit=999999`, the
+  feed test, and the comments "empty initially" test. Each asserted something true regardless of
+  what the server returned. See #1 and #7 above.
 
 Not planned: rate limiting (#6, server doesn't implement it), expired-token tests (#2, no way to mint or age a token against this server), direct DB assertions (#8, no DB access).

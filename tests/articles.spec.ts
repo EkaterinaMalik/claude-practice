@@ -1,8 +1,8 @@
 import { test, expect, APIRequestContext } from '@playwright/test';
-import { ArticlesApi, CreateArticleInput } from '../support/api/ArticlesApi';
+import { ArticlesApi, CreateArticleInput, ListArticlesParams } from '../support/api/ArticlesApi';
 import { TagsApi } from '../support/api/TagsApi';
 import { Article } from '../support/types';
-import { createAuthContext, uniqueId, cleanup } from '../support/helpers';
+import { createAuthContext, uniqueId, cleanup, API_BASE } from '../support/helpers';
 
 test.describe('Articles — Public endpoints', () => {
   test('GET /api/articles — returns articles list with default pagination', async ({ request }) => {
@@ -142,10 +142,56 @@ test.describe('Articles — Public endpoints', () => {
     expect(articles.length).toBeGreaterThan(0);
   });
 
-  test('GET /api/articles — negative offset returns 500', async ({ request }) => {
-    // Server bug: offset=-1 crashes with a raw Prisma error instead of returning 400
-    const response = await new ArticlesApi(request).getAllRaw({ limit: 5, offset: -1 });
-    expect(response.status()).toBe(500);
+  // This used to be 'negative offset returns 500'. The server crashed here with a raw Prisma
+  // error, and CI went red on 2026-10-17 because that was fixed. Re-probed the same day: a
+  // negative offset is now ignored and you get the offset=0 page, the same fallback a
+  // non-numeric value gets. The fraction case below still crashes, so only part was fixed.
+  test('GET /api/articles — a negative offset is ignored, not rejected', async ({ request }) => {
+    const api = new ArticlesApi(request);
+    const firstPage = await api.getAll({ limit: 5, offset: 0 });
+
+    for (const offset of [-1, -99]) {
+      const response = await api.getAllRaw({ limit: 5, offset });
+      expect(response.status(), `offset=${offset} — expected the value to be ignored, not rejected`)
+        .toBe(200);
+
+      const { articles } = await response.json();
+      // Same slugs in the same order as offset=0 — proves it fell back rather than skipping.
+      expect(articles.map((a: Article) => a.slug), `offset=${offset} — should return the first page`)
+        .toEqual(firstPage.articles.map(a => a.slug));
+      expect(articles, `offset=${offset} — limit should still be honoured`).toHaveLength(5);
+    }
+  });
+
+  // Probed 2026-10-11, still true 2026-10-17: a non-numeric value is ignored rather than
+  // rejected — the server falls back to its default page, the same way limit=0 does.
+  test('GET /api/articles — a non-numeric limit or offset is ignored, not rejected', async ({ request }) => {
+    const api = new ArticlesApi(request);
+    const baseline = await api.getAll();
+
+    for (const params of [{ limit: 'abc' }, { offset: 'abc' }, { limit: 'abc', offset: 'abc' }]) {
+      // Deliberate violation: these are typed as number, and sending a string is the point.
+      const response = await api.getAllRaw(params as unknown as ListArticlesParams);
+      const label = JSON.stringify(params);
+
+      expect(response.status(), `${label} — expected the value to be ignored, not rejected`).toBe(200);
+      const { articles } = await response.json();
+      expect(articles, `${label} — should fall back to the default page`)
+        .toHaveLength(baseline.articles.length);
+    }
+  });
+
+  // Same bug class as offset=-1 above: a value Prisma cannot coerce reaches the query layer and
+  // the raw error comes back. Probed 2026-10-11 — the body is
+  // "Argument take: Got invalid value 1.5 on prisma.findManyArticle. Provided Float, expected Int."
+  // The leak itself is tracked in error-response.spec.ts; this pins the status.
+  test('GET /api/articles — a fractional limit or offset returns 500', async ({ request }) => {
+    const api = new ArticlesApi(request);
+
+    for (const params of [{ limit: 1.5 }, { offset: 1.5 }]) {
+      const response = await api.getAllRaw(params as ListArticlesParams);
+      expect(response.status(), `${JSON.stringify(params)} — known server bug`).toBe(500);
+    }
   });
 });
 
@@ -157,6 +203,37 @@ test.describe('Articles — Auth protection', () => {
       body: 'test',
     });
     expect(response.status()).toBe(401);
+  });
+
+  test('POST /api/articles — returns 401 for a malformed token', async ({ playwright }) => {
+    // auth.spec.ts covers a malformed token against a read (GET /api/user). A write is the case
+    // worth pinning separately: a server that waves one through here lets anyone create data.
+    // Probed 2026-10-11 — all four shapes return 401.
+    const malformed: Record<string, string> = {
+      'garbage after the scheme': 'Token not-a-real-token',
+      'scheme with no token': 'Token ',
+      'token with no scheme': 'not-a-real-token',
+      'truncated JWT': 'Token eyJhbGciOiJIUzI1NiJ9.truncated',
+    };
+
+    for (const [label, header] of Object.entries(malformed)) {
+      const ctx = await playwright.request.newContext({
+        baseURL: API_BASE,
+        extraHTTPHeaders: { 'Content-Type': 'application/json', Authorization: header },
+      });
+
+      try {
+        const response = await new ArticlesApi(ctx).createArticleRaw({
+          title: `Malformed token ${uniqueId()}`,
+          description: 'should never be created',
+          body: 'should never be created',
+        });
+        expect(response.status(), `${label} — a malformed token must not create an article`)
+          .toBe(401);
+      } finally {
+        await ctx.dispose();
+      }
+    }
   });
 
   test('GET /api/articles/feed — returns 401 without token', async ({ request }) => {
@@ -448,6 +525,42 @@ test.describe('Articles — Authenticated endpoints', () => {
     await test.step('Cleanup: delete article', async () => {
       await cleanup(`article ${article.slug}`, () => api.deleteRaw(article.slug));
     });
+  });
+
+  // Remaining Work item 2. The two tests above cover `title` only. Probed 2026-10-11: all four
+  // payloads are stored verbatim in `description` and `body` as well. The re-fetch matters — it
+  // proves the value was stored, not merely echoed back by the create response.
+  test('POST /api/articles — stores special characters in description and body without mangling', async () => {
+    const payloads: Record<string, string> = {
+      'script tag': '<script>alert("xss")</script>',
+      'SQL injection': "'; DROP TABLE articles; --",
+      'unicode and emoji': 'Ünïcødé — emoji and a check mark',
+      'newlines and tabs': 'line one\nline two\ttabbed',
+    };
+
+    for (const [label, value] of Object.entries(payloads)) {
+      let article: Article;
+
+      await test.step(`Create article with ${label} in description and body`, async () => {
+        article = await api.createArticle({
+          title: `Special chars ${label} ${uniqueId()}`,
+          description: value,
+          body: value,
+        });
+        expect(article.description, `${label} — description in the create response`).toBe(value);
+        expect(article.body, `${label} — body in the create response`).toBe(value);
+      });
+
+      await test.step(`Verify ${label} survived storage, via a separate fetch`, async () => {
+        const fetched = await api.getBySlug(article.slug);
+        expect(fetched.description, `${label} — description after a re-fetch`).toBe(value);
+        expect(fetched.body, `${label} — body after a re-fetch`).toBe(value);
+      });
+
+      await test.step(`Cleanup: delete the ${label} article`, async () => {
+        await cleanup(`article ${article.slug}`, () => api.deleteRaw(article.slug));
+      });
+    }
   });
 
   test('POST /api/articles — stores SQL injection string in title without mangling', async () => {

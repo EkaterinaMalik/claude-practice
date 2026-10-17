@@ -150,13 +150,13 @@ to await is the return type, `Promise<APIResponse>`, and `tsc` rejects a missing
 leak patterns via `response.text()`, and the exact `{ errors: … }` envelope the server sends. Until
 the Raw methods existed, the API classes discarded the raw body — they parsed it and returned typed
 fields — so three direct `request.*` calls were the only way to get it, and this file argued they
-should stay. A Raw method returns the `APIResponse` itself, so that argument no longer holds. The
-three calls are still there; `registerRaw` would replace two and `getAllRaw` the third. Migrating
-them is open work, not a rule.
+should stay. A Raw method returns the `APIResponse` itself, so that argument no longer holds, and
+`getAllRaw` replaced the third call on 2026-10-17. **Two `request.post('/api/users', …)` calls are
+left**, and `registerRaw` replaces both. Migrating them is open work, not a rule.
 
-(Note: the `offset=-1` 500 body *is* valid JSON — a JSON string containing the Prisma text — so
-`.json()` parses it without throwing. It was the discarded body that made the exception necessary,
-not a parse error. An earlier version of this section said otherwise and was wrong.)
+(Note: the fractional-value 500 body *is* valid JSON — a JSON string containing the Prisma text —
+so `.json()` parses it without throwing. It was the discarded body that made the exception
+necessary, not a parse error. An earlier version of this section said otherwise and was wrong.)
 
 ### Environment variables
 
@@ -228,9 +228,22 @@ reaching for `any` or `@ts-ignore`.
   `id`. `POST /api/users/login` does not. Found 2026-10-10, when the zod schemas were made strict —
   no schema had declared `id`, so nothing noticed. Hence two schemas: `UserSchema` with `id`, and
   `LoginUserSchema` without.
-- **Both `Token` and `Bearer` auth schemes are accepted.** The RealWorld spec says
-  `Authorization: Token <jwt>`. Probed 2026-10-10: `Bearer <jwt>` also returns 200 on `GET /api/user`
-  and 201 on `POST /api/articles`. Do not write a test expecting 401 from `Bearer` — it will fail.
+- **Both `Token` and `Bearer` auth schemes are accepted, and the scheme is case-sensitive.** The
+  RealWorld spec says `Authorization: Token <jwt>`. Probed 2026-10-10: `Bearer <jwt>` also returns
+  200 on `GET /api/user` and 201 on `POST /api/articles`. Do not write a test expecting 401 from
+  `Bearer` — it will fail. Lowercase is a different matter: probed 2026-10-11, `token` and `bearer`
+  both give 401. `auth.spec.ts` pins all of this.
+- **Pagination parameters fail two different ways.** Re-probed 2026-10-17: a value the server
+  cannot read as a positive integer is **ignored** — `limit=abc`, `offset=abc`, `limit=0`,
+  `limit=-1`, `offset=-1` and `offset=-99` all return 200, and a negative offset gives exactly the
+  `offset=0` page. The one exception is a **fraction**: `limit=1.5` and `offset=1.5` return 500
+  leaking `Argument take: Got invalid value 1.5 on prisma.findManyArticle. Provided Float, expected
+  Int.` That is the only pagination crash left, and `error-response.spec.ts` tracks the leak under
+  `test.fail()`.
+- **`offset=-1` used to return that same 500 and was fixed on 2026-10-17.** CI went red on the
+  tracker's status assertion — `Expected: 500, Received: 200` — which is what that assertion is
+  for. Worth knowing before writing a tracker: put the status check *above* `test.fail()` or a
+  server fix is recorded as an expected failure and nobody is told.
 - All tests register fresh throw-away users (`example.com` emails) — no shared credentials file.
 
 ### Auth pattern

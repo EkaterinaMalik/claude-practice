@@ -2,11 +2,8 @@ import { z } from 'zod';
 
 // strictObject, not object: a plain z.object() strips keys it does not know about and parses
 // happily, so a field the server starts returning would vanish without a word. Missing and
-// mistyped fields were already caught either way — this closes the additive case.
-//
-// Turning it on immediately caught one: the user envelope carries an `id` that no schema here
-// declared. See UserSchema below. Article, author and comment shapes matched the live server
-// field for field, checked 2026-10-10.
+// mistyped fields were already caught either way — this closes the additive case. Checked against
+// a live response on 2026-10-10: every schema here matches the server field for field.
 
 export const AuthorSchema = z.strictObject({
   username: z.string(),
@@ -40,6 +37,9 @@ export const CommentSchema = z.strictObject({
 // POST /api/users and GET /api/user both return a numeric `id`; POST /api/users/login does not.
 // Two schemas rather than one optional field, so each shape is pinned: if login starts returning
 // `id`, or register stops, a test says so instead of quietly accepting either.
+
+// Zod's z.object() does not reject unknown keys. It removes them and returns a clean object.
+//So an extra field in a response is not an error. It is quietly deleted from the parsed copy.
 export const UserSchema = z.strictObject({
   id: z.number(),
   email: z.string(),

@@ -1,6 +1,7 @@
 import { test, expect, APIRequestContext } from '@playwright/test';
-import { AuthApi } from '../support/api/AuthApi';
-import { API_BASE, TEST_PASSWORD, TEST_NEW_PASSWORD, TEST_AVATAR_URL, uniqueId, generateEmail, createAuthContext } from '../support/helpers';
+import { AuthApi, RegisterInput } from '../support/api/AuthApi';
+import { ArticlesApi } from '../support/api/ArticlesApi';
+import { API_BASE, TEST_PASSWORD, TEST_NEW_PASSWORD, TEST_AVATAR_URL, uniqueId, generateEmail, createAuthContext, cleanup } from '../support/helpers';
 
 test.describe('Authentication', () => {
   let ctx: APIRequestContext;
@@ -49,6 +50,79 @@ test.describe('Authentication', () => {
     const response = await api.registerRaw({ username: '', email: '', password: '' });
     expect(response.status()).toBe(422);
     expect((await response.json()).errors).toBeDefined();
+  });
+
+  // Remaining Work item 4. The test above sends empty strings. Omitting a key is a different
+  // code path: the value arrives as undefined rather than '', and a server can easily treat the
+  // two differently. Probed 2026-10-11 — this one does not, and names each missing field.
+  test('POST /api/users — returns 422 and names the field when a required key is omitted', async () => {
+    const id = uniqueId();
+    const cases: Record<string, { input: Partial<RegisterInput>; missing: string[] }> = {
+      'all three omitted': { input: {}, missing: ['username', 'email', 'password'] },
+      'username omitted': { input: { email: generateEmail('om', id), password: TEST_PASSWORD }, missing: ['username'] },
+      'email omitted': { input: { username: `u_${id}`, password: TEST_PASSWORD }, missing: ['email'] },
+      'password omitted': { input: { username: `u_${id}`, email: generateEmail('op', id) }, missing: ['password'] },
+    };
+
+    for (const [label, { input, missing }] of Object.entries(cases)) {
+      // Deliberate violation: the cast makes the incomplete payload visible, per CLAUDE.md.
+      const response = await api.registerRaw(input as RegisterInput);
+      expect(response.status(), `${label} — an incomplete registration must not be accepted`).toBe(422);
+
+      const { errors } = await response.json();
+      for (const field of missing) {
+        expect(errors?.[field], `${label} — the response should name "${field}"`).toBeDefined();
+      }
+    }
+  });
+
+  // Remaining Work item 1. The RealWorld spec says `Authorization: Token <jwt>`. This server also
+  // accepts `Bearer`, so the test pins the leniency — asserting 401 here would fail. Probed
+  // 2026-10-11 on a read and a write. The scheme is case-sensitive: `token` and `bearer` give 401.
+  test('Authorization header — accepts Token and Bearer, and is case-sensitive', async ({ playwright }) => {
+    let token: string;
+
+    await test.step('Log in to obtain a token', async () => {
+      token = (await api.login({ email: registeredEmail, password })).token;
+    });
+
+    const contextFor = (scheme: string) => playwright.request.newContext({
+      baseURL: API_BASE,
+      extraHTTPHeaders: { 'Content-Type': 'application/json', Authorization: `${scheme} ${token}` },
+    });
+
+    await test.step('Token and Bearer both work, on a read and on a write', async () => {
+      for (const scheme of ['Token', 'Bearer']) {
+        const ctx = await contextFor(scheme);
+        try {
+          const user = await new AuthApi(ctx).getCurrentUser();
+          expect(user.email, `${scheme} — read should be accepted`).toBe(registeredEmail);
+
+          // A write too: a server can accept a scheme on reads and reject it on writes.
+          const article = await new ArticlesApi(ctx).createArticle({
+            title: `Scheme ${scheme} ${uniqueId()}`,
+            description: 'Auth scheme test',
+            body: 'Created to prove the scheme is accepted on a write.',
+          });
+          await cleanup(`article ${article.slug}`, () => new ArticlesApi(ctx).deleteRaw(article.slug));
+        } finally {
+          await ctx.dispose();
+        }
+      }
+    });
+
+    await test.step('A lowercase scheme is rejected', async () => {
+      for (const scheme of ['token', 'bearer']) {
+        const ctx = await contextFor(scheme);
+        try {
+          const response = await new AuthApi(ctx).getCurrentUserRaw();
+          expect(response.status(), `"${scheme}" is not the same as "${scheme[0].toUpperCase()}${scheme.slice(1)}"`)
+            .toBe(401);
+        } finally {
+          await ctx.dispose();
+        }
+      }
+    });
   });
 
   test('POST /api/users/login — returns token for valid credentials', async () => {

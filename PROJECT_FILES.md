@@ -1,6 +1,6 @@
 # Every file in this project, and what it is for
 
-A complete map. Written 2026-09-19, when the suite had **72 tests in 9 spec files**.
+A complete map. Written 2026-09-19, last re-counted 2026-10-17, when the suite had **79 tests in 9 spec files**.
 
 Start here if you are not sure which file to open.
 
@@ -26,12 +26,12 @@ and `TEST_RECOMMENDATIONS.md` tracks what is missing from them.
 
 | File | Tests | Covers |
 |---|---|---|
-| `articles.spec.ts` | 26 | The biggest one. Public list and filters, pagination boundaries, auth protection, cross-user 403s, create / update / favourite / feed / delete, 422 validation, special characters. Holds one of the two expected failures |
-| `auth.spec.ts` | 9 | Register, login, get and update the current user, 401 without a token, 401 with a broken token |
+| `articles.spec.ts` | 30 | The biggest one. Public list and filters, pagination boundaries, auth protection, cross-user 403s, create / update / favourite / feed / delete, 422 validation, special characters. Holds one of the two expected failures |
+| `auth.spec.ts` | 11 | Register, login, get and update the current user, 401 without a token, 401 with a broken token |
 | `schema.spec.ts` | 9 | Runtime response-shape checks with zod, for articles, tags, profiles, users and comments |
 | `comments.spec.ts` | 7 | List, add, delete, 401 without auth, 422 on an empty body |
 | `profiles.spec.ts` | 6 | Get a profile, 404 for unknown, follow and unfollow, 401 without a token |
-| `error-response.spec.ts` | 6 | Error body shape, and checks that errors do not leak stack traces or database internals. Holds the one expected failure — a known server bug |
+| `error-response.spec.ts` | 7 | Error body shape, and checks that errors do not leak stack traces or database internals. Holds the one expected failure — a known server bug |
 | `performance.spec.ts` | 5 | Response times on five endpoints, all under one 2000ms threshold |
 | `tags.spec.ts` | 3 | Tag list shape and filtering articles by tag |
 | `e2e-flow.spec.ts` | 1 | One long realistic journey: register → follow → create → **comment → update** → verify both → delete comment → unfollow → delete article. The comment is added *before* the update on purpose — the test checks it survives one |
@@ -41,7 +41,7 @@ failing — which means passing — the day the server is fixed. That is deliber
 
 | Spec | Bug |
 |---|---|
-| `error-response.spec.ts` | `GET /api/articles?offset=-1` returns 500 with raw Prisma internals |
+| `error-response.spec.ts` | `GET /api/articles?limit=1.5` and `?offset=1.5` return 500 with raw Prisma internals. Pointed at `offset=-1` until 2026-10-17, when the server fixed that one |
 | `articles.spec.ts` | `GET /api/articles?limit=0` returns the full default page instead of an empty one |
 
 ## 2. The code the tests use — `support/`
@@ -53,9 +53,10 @@ nothing — negative tests use it. `xxx()` calls the Raw method, asserts the sta
 really returns, and gives back the typed payload — happy paths use it. See `CLAUDE.md`, Layer
 separation.
 
-`error-response.spec.ts` still makes three direct `request.*` calls. They predate the Raw methods,
-which were the only reason those calls existed: the classes used to discard the raw body. Migrating
-them is open work, not a rule.
+`error-response.spec.ts` still makes **two** direct `request.post('/api/users', …)` calls — it was
+three until `getAllRaw` took over the article one on 2026-10-17. They predate the Raw methods, which
+were the only reason those calls existed: the classes used to discard the raw body. `registerRaw`
+replaces both. Migrating them is open work, not a rule.
 
 | File | What it holds |
 |---|---|
@@ -131,6 +132,8 @@ These are on Kateryna's machine only. A clone of this repo will not have them.
 | `../Recommendations_API.pdf` | The "8 API Testing Mistakes" article that `TEST_RECOMMENDATIONS.md` is built from |
 | `../conduit-project-reference.pdf` / `.html` | A project reference written earlier |
 | `../allure-docker-runbook.pdf` / `.html` | A runbook for the Allure Docker viewer |
+| `../from-basic-js-to-test-suite.pdf` / `.html` | A 45-row lookup table of every JavaScript, TypeScript, Playwright and zod construction used in this suite, each with a real snippet and why it is there. Rewritten 2026-10-14 for the Raw/wrapper API layer |
+| `../conduit-playwright-test-walkthrough.pdf` / `.html` | Line-by-line walkthroughs of two `auth.spec.ts` tests, written for someone new to Playwright. Part one: the `Authorization` header test — contexts, `test.step`, `try`/`finally`. Part two: the omitted-fields test — table-driven cases, `Record`, `Partial`, `Object.entries`, destructuring, optional chaining |
 | `../Conduit-API-Test-Reference.docx` / `.pdf` | This file plus `TEST_RECOMMENDATIONS.md`, built for printing |
 | `../.claude/hooks/check-docs-current.sh` | The reminder hook |
 | `../.claude/settings.local.json` | Permissions, and where the hook is wired up |
