@@ -1,8 +1,8 @@
 # API Test Coverage Recommendations
 ### Based on: *8 API Testing Mistakes That Keep QA Engineers at Junior Level* — Aston Cook
 
-**Suite state when last audited:** 2026-10-11 — 73 tests across 9 spec files. A full run reports
-73 passed. Two of those are expected `test.fail()` markers tracking known server bugs
+**Suite state when last audited:** 2026-10-11 — 78 tests across 9 spec files. A full run reports
+78 passed. Two of those are expected `test.fail()` markers tracking known server bugs
 (`offset=-1` leaking Prisma internals, and `limit=0` returning the default page instead of an
 empty one), so the runner counts them as passing while they keep failing. `npm run typecheck` is clean.
 
@@ -94,7 +94,7 @@ test something they previously only appeared to test. That is a coverage change,
 
 **Gaps to address:**
 - Malformed token against a **write** endpoint (e.g. `POST /api/articles`) — currently only the read path is covered
-- Token in the wrong header scheme. **Probed 2026-10-10: this server accepts `Bearer`.** `GET /api/user` returned 200 and `POST /api/articles` returned 201 with a valid token under `Bearer`. The RealWorld spec says `Token`. So a test here pins the leniency; asserting 401 would fail.
+- ✅ Token in the wrong header scheme. **This server accepts `Bearer`.** `GET /api/user` returns 200 and `POST /api/articles` returns 201 with a valid token under `Bearer`; the RealWorld spec says `Token`. `auth.spec.ts` pins the leniency rather than asserting a 401, which would fail. It also pins that the scheme is case-sensitive: `token` and `bearer` give 401.
 - Expired tokens: not testable against this server — no way to mint or age a token. Out of scope unless the target API changes.
 
 ---
@@ -209,24 +209,34 @@ Everything below is a genuine gap, in the order worth doing:
 
 | Priority | Item | Mistake | Effort |
 |----------|------|---------|--------|
-| 1 | Pin that this server accepts `Bearer` as well as `Token` — it does, so the test asserts the leniency, not a 401 | #2 | Low |
-| 2 | Special chars / injection strings in article `body` and `description` | #1 | Low |
-| 3 | Non-numeric pagination params (`limit=abc`, `offset=abc`) | #1 | Low |
-| 4 | Registration with omitted (not empty) required fields | #1 | Low |
-| 5 | Migrate the three direct `request.*` calls in `error-response.spec.ts` to `…Raw` methods | #7 | Low |
-| 6 | `tags.spec.ts` — `'returns non-empty list'` asserts what the test above it already asserts | #7 | Low |
-| 7 | The CI workflow still uses a Node 20 action that GitHub has deprecated | — | Low |
+| 1 | Migrate the three direct `request.*` calls in `error-response.spec.ts` to `…Raw` methods | #7 | Low |
+| 2 | `tags.spec.ts` — `'returns non-empty list'` asserts what the test above it already asserts | #7 | Low |
+| 3 | The CI workflow still uses a Node 20 action that GitHub has deprecated | — | Low |
+| 4 | Add the `limit=1.5` / `offset=1.5` Prisma leak to the `test.fail()` tracker in `error-response.spec.ts` — only the status is pinned today | #3 | Low |
 
-Re-checked against the live API on 2026-10-11. Items 1–4 are unchanged and still open. Items 5–7
-are new, and all three came out of the Raw/wrapper refactor on 2026-10-11.
+Re-checked against the live API on 2026-10-11. Everything the September audit left open has been
+written; the four items above all came out of work done on 2026-10-11.
 
-**Item 5** is open work, not a rule. `error-response.spec.ts` asserts on the raw body — leak
+**Item 1** is open work, not a rule. `error-response.spec.ts` asserts on the raw body — leak
 patterns via `response.text()`, and the exact `{ errors: … }` envelope — and until the Raw methods
 existed, three direct `request.*` calls were the only way to reach it, because the API classes
 discarded the raw body. A Raw method returns the `APIResponse` itself, so that reason is gone.
 `registerRaw` replaces two of the calls and `getAllRaw` the third.
 
 **Done since the last audit:**
+
+- **`Bearer` is accepted as well as `Token`, and the scheme is case-sensitive.** `auth.spec.ts`
+  pins the leniency on a read and a write, since asserting 401 would fail. Probed 2026-10-11:
+  `Token` and `Bearer` both give 200/201, while `token` and `bearer` give 401.
+- **Special characters in `description` and `body`.** `articles.spec.ts` sends a script tag, a SQL
+  injection string, unicode with emoji, and newlines/tabs, then re-fetches each article to prove
+  the value was stored rather than echoed. All four survive verbatim.
+- **Non-numeric pagination is ignored, not rejected.** `limit=abc` and `offset=abc` return 200 with
+  the default page. A fractional value is different: `limit=1.5` and `offset=1.5` return 500
+  leaking Prisma internals, the same bug class as `offset=-1`. Both statuses are now pinned.
+- **Registration with an omitted key, not an empty string.** A missing key is a separate code path
+  from `''`. Probed 2026-10-11: this server returns 422 either way and names each missing field,
+  which `auth.spec.ts` now asserts per field.
 
 - **A malformed token is rejected by a write endpoint.** `articles.spec.ts` sends four malformed
   shapes to `POST /api/articles` — garbage after the scheme, a scheme with no token, a token with

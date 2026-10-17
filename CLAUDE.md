@@ -228,9 +228,16 @@ reaching for `any` or `@ts-ignore`.
   `id`. `POST /api/users/login` does not. Found 2026-10-10, when the zod schemas were made strict —
   no schema had declared `id`, so nothing noticed. Hence two schemas: `UserSchema` with `id`, and
   `LoginUserSchema` without.
-- **Both `Token` and `Bearer` auth schemes are accepted.** The RealWorld spec says
-  `Authorization: Token <jwt>`. Probed 2026-10-10: `Bearer <jwt>` also returns 200 on `GET /api/user`
-  and 201 on `POST /api/articles`. Do not write a test expecting 401 from `Bearer` — it will fail.
+- **Both `Token` and `Bearer` auth schemes are accepted, and the scheme is case-sensitive.** The
+  RealWorld spec says `Authorization: Token <jwt>`. Probed 2026-10-10: `Bearer <jwt>` also returns
+  200 on `GET /api/user` and 201 on `POST /api/articles`. Do not write a test expecting 401 from
+  `Bearer` — it will fail. Lowercase is a different matter: probed 2026-10-11, `token` and `bearer`
+  both give 401. `auth.spec.ts` pins all of this.
+- **Pagination parameters fail three different ways.** Probed 2026-10-11: a non-numeric value
+  (`limit=abc`, `offset=abc`) is ignored and you get the default page; a fractional value
+  (`limit=1.5`, `offset=1.5`) returns 500 leaking `Argument take: Got invalid value 1.5 on
+  prisma.findManyArticle`, the same bug class as `offset=-1`; and a negative `limit` returns 200
+  with a single article. Only `limit=0` falls back to the default, as noted above.
 - All tests register fresh throw-away users (`example.com` emails) — no shared credentials file.
 
 ### Auth pattern

@@ -1,5 +1,5 @@
 import { test, expect, APIRequestContext } from '@playwright/test';
-import { ArticlesApi, CreateArticleInput } from '../support/api/ArticlesApi';
+import { ArticlesApi, CreateArticleInput, ListArticlesParams } from '../support/api/ArticlesApi';
 import { TagsApi } from '../support/api/TagsApi';
 import { Article } from '../support/types';
 import { createAuthContext, uniqueId, cleanup, API_BASE } from '../support/helpers';
@@ -146,6 +146,37 @@ test.describe('Articles — Public endpoints', () => {
     // Server bug: offset=-1 crashes with a raw Prisma error instead of returning 400
     const response = await new ArticlesApi(request).getAllRaw({ limit: 5, offset: -1 });
     expect(response.status()).toBe(500);
+  });
+
+  // Remaining Work item 3. Probed 2026-10-11: a non-numeric value is ignored rather than
+  // rejected — the server falls back to its default page, the same way limit=0 does.
+  test('GET /api/articles — a non-numeric limit or offset is ignored, not rejected', async ({ request }) => {
+    const api = new ArticlesApi(request);
+    const baseline = await api.getAll();
+
+    for (const params of [{ limit: 'abc' }, { offset: 'abc' }, { limit: 'abc', offset: 'abc' }]) {
+      // Deliberate violation: these are typed as number, and sending a string is the point.
+      const response = await api.getAllRaw(params as unknown as ListArticlesParams);
+      const label = JSON.stringify(params);
+
+      expect(response.status(), `${label} — expected the value to be ignored, not rejected`).toBe(200);
+      const { articles } = await response.json();
+      expect(articles, `${label} — should fall back to the default page`)
+        .toHaveLength(baseline.articles.length);
+    }
+  });
+
+  // Same bug class as offset=-1 above: a value Prisma cannot coerce reaches the query layer and
+  // the raw error comes back. Probed 2026-10-11 — the body is
+  // "Argument take: Got invalid value 1.5 on prisma.findManyArticle. Provided Float, expected Int."
+  // The leak itself is tracked in error-response.spec.ts; this pins the status.
+  test('GET /api/articles — a fractional limit or offset returns 500', async ({ request }) => {
+    const api = new ArticlesApi(request);
+
+    for (const params of [{ limit: 1.5 }, { offset: 1.5 }]) {
+      const response = await api.getAllRaw(params as ListArticlesParams);
+      expect(response.status(), `${JSON.stringify(params)} — known server bug`).toBe(500);
+    }
   });
 });
 
@@ -479,6 +510,42 @@ test.describe('Articles — Authenticated endpoints', () => {
     await test.step('Cleanup: delete article', async () => {
       await cleanup(`article ${article.slug}`, () => api.deleteRaw(article.slug));
     });
+  });
+
+  // Remaining Work item 2. The two tests above cover `title` only. Probed 2026-10-11: all four
+  // payloads are stored verbatim in `description` and `body` as well. The re-fetch matters — it
+  // proves the value was stored, not merely echoed back by the create response.
+  test('POST /api/articles — stores special characters in description and body without mangling', async () => {
+    const payloads: Record<string, string> = {
+      'script tag': '<script>alert("xss")</script>',
+      'SQL injection': "'; DROP TABLE articles; --",
+      'unicode and emoji': 'Ünïcødé — emoji and a check mark',
+      'newlines and tabs': 'line one\nline two\ttabbed',
+    };
+
+    for (const [label, value] of Object.entries(payloads)) {
+      let article: Article;
+
+      await test.step(`Create article with ${label} in description and body`, async () => {
+        article = await api.createArticle({
+          title: `Special chars ${label} ${uniqueId()}`,
+          description: value,
+          body: value,
+        });
+        expect(article.description, `${label} — description in the create response`).toBe(value);
+        expect(article.body, `${label} — body in the create response`).toBe(value);
+      });
+
+      await test.step(`Verify ${label} survived storage, via a separate fetch`, async () => {
+        const fetched = await api.getBySlug(article.slug);
+        expect(fetched.description, `${label} — description after a re-fetch`).toBe(value);
+        expect(fetched.body, `${label} — body after a re-fetch`).toBe(value);
+      });
+
+      await test.step(`Cleanup: delete the ${label} article`, async () => {
+        await cleanup(`article ${article.slug}`, () => api.deleteRaw(article.slug));
+      });
+    }
   });
 
   test('POST /api/articles — stores SQL injection string in title without mangling', async () => {
