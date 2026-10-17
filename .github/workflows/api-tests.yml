@@ -66,6 +66,11 @@ jobs:
           path: junit-results/results.xml
           reporter: java-junit
           fail-on-error: false
+          # The suite step already decided the job, so this one never should. Without
+          # this, a Typecheck failure skips the suite, leaves no results.xml behind, and
+          # this step - which runs on `always()` - fails a second time with "No test
+          # report files were found". Two red steps, and the second one misleading.
+          fail-on-empty: false
           # Load-bearing. `use-actions-summary` defaults to 'true', and on that path the
           # action writes the report to the job summary and never calls checks.create -
           # so no "Playwright Test Results" check run appears on the commit or PR, failing
