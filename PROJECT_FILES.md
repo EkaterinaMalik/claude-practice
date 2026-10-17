@@ -1,6 +1,6 @@
 # Every file in this project, and what it is for
 
-A complete map. Written 2026-09-19, last re-counted 2026-10-17, when the suite had **79 tests in 9 spec files**.
+A complete map. Written 2026-09-19, last re-counted 2026-10-17, when the suite had **78 tests in 9 spec files**.
 
 Start here if you are not sure which file to open.
 
@@ -33,7 +33,7 @@ and `TEST_RECOMMENDATIONS.md` tracks what is missing from them.
 | `profiles.spec.ts` | 6 | Get a profile, 404 for unknown, follow and unfollow, 401 without a token |
 | `error-response.spec.ts` | 7 | Error body shape, and checks that errors do not leak stack traces or database internals. Holds the one expected failure — a known server bug |
 | `performance.spec.ts` | 5 | Response times on five endpoints, all under one 2000ms threshold |
-| `tags.spec.ts` | 3 | Tag list shape and filtering articles by tag |
+| `tags.spec.ts` | 2 | Tag list shape and filtering articles by tag |
 | `e2e-flow.spec.ts` | 1 | One long realistic journey: register → follow → create → **comment → update** → verify both → delete comment → unfollow → delete article. The comment is added *before* the update on purpose — the test checks it survives one |
 
 **Two tests are expected to fail.** Each `test.fail()` marks a real server bug, and each will start
@@ -53,10 +53,10 @@ nothing — negative tests use it. `xxx()` calls the Raw method, asserts the sta
 really returns, and gives back the typed payload — happy paths use it. See `CLAUDE.md`, Layer
 separation.
 
-`error-response.spec.ts` still makes **two** direct `request.post('/api/users', …)` calls — it was
-three until `getAllRaw` took over the article one on 2026-10-17. They predate the Raw methods, which
-were the only reason those calls existed: the classes used to discard the raw body. `registerRaw`
-replaces both. Migrating them is open work, not a rule.
+**No spec calls `request.*` directly any more.** `error-response.spec.ts` was the last holdout with
+three such calls; they predated the Raw methods, which were the only reason they existed, because
+the classes used to discard the raw body. All three were migrated on 2026-10-17 — `getAllRaw` for
+the article call, `registerRaw` for the two registration ones.
 
 | File | What it holds |
 |---|---|

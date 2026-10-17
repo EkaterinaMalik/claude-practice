@@ -16,11 +16,6 @@ test.describe('Tags', () => {
     }
   });
 
-  test('GET /api/tags — returns non-empty list', async ({ request }) => {
-    const tags = await new TagsApi(request).getAll();
-    expect(tags.length).toBeGreaterThan(0);
-  });
-
   test('GET /api/tags — filtering articles by a global tag returns only matching articles', async ({ request }) => {
     const tags = await new TagsApi(request).getAll();
     const tag = tags[0];

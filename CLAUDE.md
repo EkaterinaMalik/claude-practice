@@ -85,7 +85,7 @@ The project follows a two-layer model:
 | Layer | Location | Role |
 |-------|----------|------|
 | API classes | `support/api/` | Wrap raw HTTP calls; own typed input/output interfaces. **Two methods per endpoint** — see below |
-| Spec files | `tests/` | Assertions only; call API classes, not `request.post/get` (three calls in `error-response.spec.ts` still do — see below) |
+| Spec files | `tests/` | Assertions only; call API classes, not `request.post/get`. **No exceptions left** — the last direct call went on 2026-10-17 |
 | Shared models | `support/types.ts` | Domain types shared across API classes (`Article`, `Author`) |
 
 **Status:** complete. All five API classes (`ArticlesApi`, `AuthApi`, `CommentsApi`, `ProfilesApi`,
@@ -146,13 +146,14 @@ written that way so no caller ever has to read a signature to decide whether to 
 to await is the return type, `Promise<APIResponse>`, and `tsc` rejects a missing `await` —
 `Property 'status' does not exist on type 'Promise<APIResponse>'`.
 
-**The `error-response.spec.ts` exception has lost its reason.** That spec asserts on the *raw* body:
-leak patterns via `response.text()`, and the exact `{ errors: … }` envelope the server sends. Until
-the Raw methods existed, the API classes discarded the raw body — they parsed it and returned typed
+**The `error-response.spec.ts` exception is gone.** That spec asserts on the *raw* body: leak
+patterns via `response.text()`, and the exact `{ errors: … }` envelope the server sends. Until the
+Raw methods existed, the API classes discarded the raw body — they parsed it and returned typed
 fields — so three direct `request.*` calls were the only way to get it, and this file argued they
-should stay. A Raw method returns the `APIResponse` itself, so that argument no longer holds, and
-`getAllRaw` replaced the third call on 2026-10-17. **Two `request.post('/api/users', …)` calls are
-left**, and `registerRaw` replaces both. Migrating them is open work, not a rule.
+should stay. A Raw method returns the `APIResponse` itself, which killed that argument. All three
+were migrated on 2026-10-17: `getAllRaw` took the article call, `registerRaw` the two registration
+calls. **Every spec in the suite now goes through the API layer.** Do not reintroduce a direct
+call — if a test needs the untouched response, that is what a Raw method hands back.
 
 (Note: the fractional-value 500 body *is* valid JSON — a JSON string containing the Prisma text —
 so `.json()` parses it without throwing. It was the discarded body that made the exception
