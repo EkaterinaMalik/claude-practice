@@ -58,6 +58,56 @@ Five commands. They only run when you type them.
 Note: `/api-test-audit` **overwrites** `TEST_RECOMMENDATIONS.md`. Run it when you want the file
 rebuilt from scratch, not when you want a small edit.
 
+### These files rot, and there is now a check for it
+
+They contain real snippets — method calls, signatures, zod schemas, cleanup — and nothing compiles
+them. All five went stale through the Raw/wrapper refactor on 2026-10-17 while every spec still
+passed. They taught the deleted result-object API, `z.object` instead of `z.strictObject`,
+`createAuthContext(playwright)` after the argument was removed, and `.catch()` cleanup — the one
+pattern `CLAUDE.md` forbids — presented as good practice with reasoning attached.
+
+A stale command is worse than no command: it generates code that fails `tsc` on the first line, or
+compiles and teaches a bug.
+
+```bash
+npm run check:commands
+```
+
+`scripts/check-commands-current.sh` scans the fenced code blocks for retired patterns and checks
+that every `api.method(` named there exists in `support/api/`. CI runs it after `typecheck`. Prose
+is not scanned, so the `strictObject` section can still name `z.object` to explain why not to use
+it. When you retire a pattern, add a row to the `banned` list in that script.
+
+## 2b. Skill — `.claude/skills/playwright-api-tests/`
+
+The same rules as the commands, written to be portable.
+
+| | Slash command | Skill |
+|---|---|---|
+| Lives in | `.claude/commands/*.md` | `.claude/skills/playwright-api-tests/` |
+| Runs when | you type `/its-name` | Claude reads its `description` and loads it when the task matches |
+| Scope | this project — real method names, this server's quirks | any Playwright API suite — the quirks are examples, not law |
+
+```
+.claude/skills/playwright-api-tests/
+├── SKILL.md              architecture: Raw/wrapper, expectStatus, cleanup, independence
+└── references/           auth-tests · validation-tests · schema-tests · e2e-flow · suite-audit
+```
+
+`SKILL.md` always loads; a reference is read only when that task comes up.
+
+**It lives in the repo and is symlinked into the home directory:**
+
+```
+~/.claude/skills/playwright-api-tests -> <repo>/.claude/skills/playwright-api-tests
+```
+
+So it loads in every project, while git versions it, CI checks it, and a clone brings it along.
+Kept only under `~/.claude/` it would be none of those things. If you clone this repo elsewhere,
+recreate the symlink by hand — it is the one piece that does not travel.
+
+Both directories are covered by `npm run check:commands`.
+
 ## 3. Hook — `check-docs-current.sh`
 
 Full path: `/home/kateryna/Projects/Claude_project/.claude/hooks/check-docs-current.sh`
@@ -68,7 +118,7 @@ It is a `PostToolUse` hook. It runs after Claude uses Write, Edit, or Bash.
 What it does: if a source file was **changed**, it names the doc that describes that file, and the
 section to look at. Nothing more. It never edits a file and never blocks anything.
 
-It covers six pairs:
+It covers seven pairs:
 
 | Changed file | Doc it names |
 |---|---|
@@ -77,7 +127,8 @@ It covers six pairs:
 | `package.json`, `playwright.config.ts` | `CLAUDE.md` — Commands, Reporting |
 | `docker-compose.yml`, `docker/` | `CLAUDE.md` — Allure viewer, container run |
 | `.github/workflows/` | `CI_SETUP.md` |
-| `.claude/commands/`, `.claude/hooks/` | `CLAUDE_SETUP.md` — this file |
+| `.claude/commands/`, `.claude/hooks/`, `.claude/skills/` | `CLAUDE_SETUP.md` — this file |
+| `support/api/*`, `helpers.ts`, `schemas.ts` | `.claude/commands/` + `.claude/skills/` — both quote this code |
 
 It stays silent on reads (`cat`, `grep`) and on test runs. So if it fires, a file really changed.
 
@@ -89,6 +140,10 @@ outstanding that was already done — so the work nearly got done twice.
 **The rule matters more than the hook.** The written version lives in `CLAUDE.md`, section
 "Keeping docs current", and it travels with a clone. This hook does not — see the note at the top
 of this file. If the hook disappears, follow the rule anyway.
+
+**And a check matters more than a rule.** The commands rotted while this hook was already running,
+because a reminder is only as good as whoever reads it. `npm run check:commands` fails the build
+instead. Where a rule can be made executable, make it executable.
 
 **One known limit:** for a Bash command it reads only the first line. A long heredoc that *writes
 about* file paths used to set it off by mistake. Writing a doc is not the same as changing code.
@@ -129,6 +184,8 @@ Memory is personal to you and this machine. It is not shared and not in git.
 | Change how Claude writes tests | `CLAUDE.md` |
 | Change which doc covers which file | `CLAUDE.md` — "Keeping docs current", and the hook |
 | Change what a slash command does | the file in `.claude/commands/` |
+| Change the rules Claude applies on **other** projects | `.claude/skills/playwright-api-tests/` |
+| Stop a retired pattern coming back | add a row to `scripts/check-commands-current.sh` |
 | Change when the reminder fires | `.claude/hooks/check-docs-current.sh` |
 | Change how Claude talks to you | ask Claude to save it to memory |
 | Change what to test next | `TEST_RECOMMENDATIONS.md`, or run `/api-test-audit` to rebuild it |
@@ -138,6 +195,10 @@ Memory is personal to you and this machine. It is not shared and not in git.
 
 This file is a description of other files. That means it can go out of date, exactly the way
 `TEST_RECOMMENDATIONS.md` did. Nothing checks it automatically.
+
+The code *inside* `.claude/commands/` and `.claude/skills/` is checked — `npm run check:commands`,
+in CI. The prose here is not. Both directories went stale once while the reminder hook was already
+running, which is why that check exists.
 
 If you add a slash command, change the hook, or move a file, update the tables above. If you are
 not sure it is still true, trust the real files over this one.

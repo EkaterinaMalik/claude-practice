@@ -6,6 +6,7 @@
   "scripts": {
     "pretest": "rm -rf allure-results",
     "typecheck": "tsc --noEmit",
+    "check:commands": "bash scripts/check-commands-current.sh",
     "test": "playwright test",
     "test:auth": "npm test -- tests/auth.spec.ts",
     "test:articles": "npm test -- tests/articles.spec.ts",

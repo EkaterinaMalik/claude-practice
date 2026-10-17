@@ -6,6 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 npm run typecheck               # tsc --noEmit — types only, runs nothing
+npm run check:commands          # .claude/commands/ still matches the real API?
 npm test                        # run all tests (writes HTML + Allure results, per config)
 npm run test:auth               # run a single suite
 npm run test:articles
@@ -375,6 +376,7 @@ So: **when you change a file, check the doc that describes it, in the same chang
 | `docker-compose.yml`, `docker/` | `CLAUDE.md`, `PROJECT_FILES.md` | the Allure viewer and container sections; and the config table in the file map |
 | `.github/workflows/` | `CI_SETUP.md` | workflow steps and permissions |
 | `.claude/commands/`, `.claude/hooks/` | `CLAUDE_SETUP.md` | the rule sources and edit-map table |
+| `support/api/*`, `helpers.ts`, `schemas.ts` | `.claude/commands/`, `.claude/skills/` | **both quote this code.** Method names, signatures, zod usage, the cleanup pattern. Run `npm run check:commands` |
 | any file added, renamed or deleted | `PROJECT_FILES.md` | it is an inventory, so it goes stale on every move |
 
 ### How to apply it
@@ -388,6 +390,36 @@ So: **when you change a file, check the doc that describes it, in the same chang
   "missing fields" test sent empty strings, the threshold rule was already documented elsewhere,
   and special characters were only tested on one field.
 - **A stale doc is worse than no doc.** It is confidently wrong, and it is believed.
+
+### `.claude/` rots like code, because it is code
+
+Two directories here teach code: `commands/` (five project-specific slash commands) and
+`skills/playwright-api-tests/` (the portable version, symlinked into `~/.claude/skills/` so it
+loads in every project while living here, where git and CI can see it).
+
+The five slash commands generate tests. They contain real snippets — method calls, signatures,
+zod schemas, cleanup — and **nothing compiles them**, so they go stale silently while every spec
+still passes. All five did. They taught the pre-refactor result-object API (`const { status, article }
+= await api.create(...)`), `z.object` instead of `z.strictObject`, `createAuthContext(playwright)`
+after the argument was removed, and — worst — `await api.delete(slug).catch(...)` as a *best
+practice*, the one pattern this file forbids, with reasoning attached that makes it look careful.
+
+A command that is stale is worse than no command. It generates code that fails `tsc` on the first
+line, or compiles and teaches a bug.
+
+**So there is a check, not just a reminder:**
+
+```bash
+npm run check:commands
+```
+
+It scans the fenced code blocks in `.claude/commands/` **and `.claude/skills/`** for patterns this
+repo has retired, and verifies every `api.method(` named there exists in `support/api/`. CI runs it right after
+`typecheck`. Prose is not scanned — the `strictObject` section has to be able to name `z.object` to
+explain why not to use it.
+
+When you retire a pattern, add a row to the `banned` list in `scripts/check-commands-current.sh`
+in the same change. That is what turns a one-time cleanup into a rule that holds.
 
 ### The reminder hook
 
