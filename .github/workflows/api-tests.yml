@@ -59,7 +59,34 @@ jobs:
       - name: Check .claude/commands/ matches the API
         run: npm run check:commands
 
+      # Dependabot PRs and forked PRs both run with an empty secrets scope - GitHub
+      # withholds repository secrets from them on purpose, so a dependency update or a
+      # stranger's branch cannot exfiltrate them. This suite hits a live API and needs
+      # TEST_PASSWORD, so it cannot run there. Without this gate the job failed with
+      # "TEST_PASSWORD is not set", which reads like a broken suite and is not.
+      #
+      # Everything above this point - typecheck, the commands check, npm ci - needs no
+      # secrets and still runs, so such a PR gets real signal rather than a red X.
+      - name: Check whether the live suite can run
+        id: creds
+        run: |
+          if [ -n "$TEST_PASSWORD" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Live suite skipped"
+              echo
+              echo "No repository secrets in this context, so \`TEST_PASSWORD\` is empty."
+              echo "Dependabot and forked pull requests run with an empty secrets scope by design."
+              echo
+              echo "Typecheck and the \`.claude/\` check above did run. The suite runs on \`master\`"
+              echo "after merge - check there before trusting this PR."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Run Playwright tests
+        if: steps.creds.outputs.available == 'true'
         run: npx playwright test
 
       # dorny/test-reporter: v1 and v2 both run on node20, which GitHub has deprecated;
@@ -70,7 +97,7 @@ jobs:
         # !cancelled() rather than always(): cancel-in-progress above means a second
         # push cancels this run mid-suite, and on a cancelled run there is no complete
         # report to publish or upload. Still runs when an earlier step FAILED.
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.creds.outputs.available == 'true' }}
         with:
           name: Playwright Test Results
           path: junit-results/results.xml
@@ -91,7 +118,7 @@ jobs:
           use-actions-summary: false
 
       - name: Upload Playwright HTML report
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.creds.outputs.available == 'true' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: playwright-report
@@ -99,7 +126,7 @@ jobs:
           retention-days: 7
 
       - name: Upload Allure results
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.creds.outputs.available == 'true' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: allure-results

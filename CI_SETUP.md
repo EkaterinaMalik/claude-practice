@@ -123,7 +123,7 @@ steps:
 - `actions/setup-node@v7` with `node-version: 22` — matches the local dev Node version; `cache: npm` caches `~/.npm` keyed on `package-lock.json` so subsequent runs install faster.
 - `npm ci` — clean, reproducible install from the lockfile (not `npm install`).
 - `npx playwright test` — no browsers to install via `playwright install`, since these are API-only tests (`support/api/` classes hitting the REST API directly, no `page` fixture).
-- `dorny/test-reporter` — reads `junit-results/results.xml` and publishes the `Playwright Test Results` check run. `if: ${{ !cancelled() }}` so a *failing* suite is still reported, while a run cancelled by `cancel-in-progress` is not — there is no complete report to publish on a cancelled run. `fail-on-error: false` and `fail-on-empty: false` so this step never decides the job: the suite step already did. Both defaults are the opposite — `fail-on-empty` in particular would fire whenever an earlier step fails and the suite is skipped, since this step runs anyway and there is no `results.xml` to read. `use-actions-summary: false` is load-bearing — see step 4. **Every action is pinned to a commit SHA, with a `# vX.Y.Z` comment.** A tag like `@v7` can be moved by its owner at any time, and this job puts `TEST_PASSWORD` in the environment of every step — so a moved tag would run with those secrets in scope. A SHA cannot move. The version comment is not decoration: Dependabot reads it to know the current version and rewrites both parts, so keep the format. `.github/dependabot.yml` proposes the bumps monthly; the suite and `npm run check:commands` decide whether one is safe. Before the pin, four actions sat on the deprecated `node20` runtime until someone went looking.
+- `dorny/test-reporter` — reads `junit-results/results.xml` and publishes the `Playwright Test Results` check run. `if: ${{ !cancelled() }}` so a *failing* suite is still reported, while a run cancelled by `cancel-in-progress` is not — there is no complete report to publish on a cancelled run. `fail-on-error: false` and `fail-on-empty: false` so this step never decides the job: the suite step already did. Both defaults are the opposite — `fail-on-empty` in particular would fire whenever an earlier step fails and the suite is skipped, since this step runs anyway and there is no `results.xml` to read. `use-actions-summary: false` is load-bearing — see step 4. **Every action is pinned to a commit SHA, with a `# vX.Y.Z` comment.** A tag like `@v7` can be moved by its owner at any time, and this job puts `TEST_PASSWORD` in the environment of every step — so a moved tag would run with those secrets in scope. A SHA cannot move. The version comment is not decoration: Dependabot reads it to know the current version and rewrites both parts, so keep the format. `.github/dependabot.yml` proposes the bumps monthly. **A Dependabot PR cannot run the live suite** — see below — so typecheck and `npm run check:commands` are the signal there, and the suite runs on `master` after merge. Before the pin, four actions sat on the deprecated `node20` runtime until someone went looking.
 
 Playwright itself already detects the `CI` env var (set automatically by GitHub Actions) — `playwright.config.ts` uses that to switch to serial workers, enable retries, and forbid `.only` in CI:
 
@@ -171,6 +171,49 @@ docker run --rm -p 5252:5252 -u $(id -u):$(id -g) \
 ```
 
 Downloading into `/tmp` rather than the repo keeps your own `allure-results/` intact. See CLAUDE.md for the `allure` service the image comes from.
+
+### 7b. Runs without secrets — Dependabot and forked PRs
+
+**GitHub withholds repository Secrets from Dependabot pull requests and from forked pull
+requests.** That is deliberate: a dependency update, or a stranger's branch, must not be able to
+read your credentials. Those runs get an empty secrets scope, so `${{ secrets.TEST_PASSWORD }}`
+evaluates to an empty string.
+
+This suite hits a live API, so without a guard the job died at the first spec with:
+
+```
+Error: TEST_PASSWORD is not set.
+  Note a forked pull request receives no Secrets, so TEST_PASSWORD is empty there.
+```
+
+That reads like a broken suite and is not. So the workflow checks first:
+
+```yaml
+- name: Check whether the live suite can run
+  id: creds
+  run: |
+    if [ -n "$TEST_PASSWORD" ]; then
+      echo "available=true" >> "$GITHUB_OUTPUT"
+    else
+      echo "available=false" >> "$GITHUB_OUTPUT"
+      # ... and writes an explanation to $GITHUB_STEP_SUMMARY
+    fi
+
+- name: Run Playwright tests
+  if: steps.creds.outputs.available == 'true'
+  run: npx playwright test
+```
+
+The reporter and both upload steps carry the same condition — with no run there is nothing to
+publish or upload.
+
+**What such a PR still proves.** `npm ci`, `npm run typecheck` and `npm run check:commands` all
+run, and all three need no secrets. For a dependency or action bump that is most of the signal.
+The suite runs on `master` after merge, so check there before trusting a green Dependabot PR.
+
+**Do not "fix" this by adding the secrets to the Dependabot scope.** `gh secret set --app
+dependabot` would make the suite run, and would also hand live credentials to every dependency
+update — precisely what the default prevents.
 
 ### 8. Commit and push
 

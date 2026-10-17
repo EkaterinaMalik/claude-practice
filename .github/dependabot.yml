@@ -20,20 +20,25 @@ updates:
     labels:
       - dependencies
 
-  # npm is deliberately limited to security advisories. A routine bump of a dev
-  # dependency here is noise: nothing ships from this repo, and the suite is the
-  # only consumer. A vulnerable transitive dependency is still worth a PR.
+  # npm is deliberately limited to SECURITY advisories only.
+  #
+  # `open-pull-requests-limit: 0` is the documented way to say that: it turns off
+  # version-update PRs while security updates still come through, since those are
+  # not subject to the limit.
+  #
+  # The first attempt used an `ignore` block for semver-patch and semver-minor. That
+  # is backwards - it blocks the harmless bumps and lets MAJOR ones through. Within
+  # minutes it opened three major bumps nobody asked for: dotenv 17->18,
+  # @types/node 25->26, undici-types 7->8. Corrected 2026-10-17.
+  #
+  # Routine bumps are noise here: nothing ships from this repo and the suite is the
+  # only consumer. A vulnerable dependency is still worth a PR.
   - package-ecosystem: npm
     directory: /
     schedule:
       interval: monthly
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 0
     commit-message:
       prefix: chore
     labels:
       - dependencies
-    ignore:
-      - dependency-name: "*"
-        update-types:
-          - version-update:semver-patch
-          - version-update:semver-minor
