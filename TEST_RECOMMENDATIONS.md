@@ -1,10 +1,17 @@
 # API Test Coverage Recommendations
 ### Based on: *8 API Testing Mistakes That Keep QA Engineers at Junior Level* — Aston Cook
 
-**Suite state when last audited:** 2026-10-17 — 78 tests across 9 spec files. A full run reports
-78 passed. Two of those are expected `test.fail()` markers tracking known server bugs
-(`limit=1.5` / `offset=1.5` leaking Prisma internals, and `limit=0` returning the default page
-instead of an empty one), so the runner counts them as passing while they keep failing.
+**Suite state when last audited:** 2026-10-17 — 86 tests across 9 spec files. A full run reports
+86 passed. **Four** of those are expected `test.fail()` markers tracking known server bugs, so the
+runner counts them as passing while they keep failing:
+
+| Bug | Tracked in |
+|---|---|
+| `limit=1.5` / `offset=1.5` return 500 leaking Prisma internals | `error-response.spec.ts` |
+| Follow / unfollow an unknown username, comment on an unknown slug — same leak | `error-response.spec.ts` |
+| `limit=0` returns the default page instead of an empty one | `articles.spec.ts` |
+| Favouriting twice as the same user counts twice | `articles.spec.ts` |
+
 `npm run typecheck` is clean.
 
 **The suite caught a server fix on 2026-10-17.** `offset=-1` had crashed with a 500 leaking Prisma
@@ -245,6 +252,26 @@ unrelated items before this was fixed.
 Re-checked against the live API on 2026-10-17.
 
 **Done since the last audit:**
+
+- **Eight tests from a coverage probe on 2026-10-17.** Every endpoint was already hit, so the gaps
+  were behaviours rather than endpoints, and each was probed against the live API before a line was
+  written:
+  - **`favoritesCount` can be inflated by one account.** Favouriting the same article twice as the
+    same user returns 200 both times and counts twice. A seeded article shows 2269 favourites.
+    Tracked with `test.fail()`.
+  - **The feed's positive case was untested.** The suite only proved an empty feed stays empty,
+    which would also pass if the feed were broken. Following an author now has to surface their
+    article.
+  - **Three more routes to the Prisma leak** — follow an unknown username, unfollow an unknown
+    username, comment on an unknown slug. Statuses pinned in `profiles.spec.ts` and
+    `comments.spec.ts`, the leak tracked in `error-response.spec.ts`.
+  - **Self-following is permitted** (200, `following: true`). Pinned as leniency rather than
+    asserted as a 422, the same way `Bearer` is in `auth.spec.ts`.
+  - **A cross-user comment delete returns 404 with an empty body**, where articles return 403. The
+    comment survives, so the protection works — only the status and shape differ.
+  - **Unfollowing a real user you never followed is a clean 200 no-op.** Worth pinning so it is not
+    "fixed" into a 404. An earlier draft assumed *this* was the 500 case and was wrong; the status
+    assertion caught it before the test was committed.
 
 - **Every action in the CI workflow is off the deprecated Node 20 runtime.** The backlog named one
   action, `dorny/test-reporter@v1`. Bumping it to `v3` (`v2` is `node20` too) made the runner's

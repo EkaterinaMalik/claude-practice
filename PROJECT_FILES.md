@@ -1,6 +1,6 @@
 # Every file in this project, and what it is for
 
-A complete map. Written 2026-09-19, last re-counted 2026-10-17, when the suite had **78 tests in 9 spec files**.
+A complete map. Written 2026-09-19, last re-counted 2026-10-17, when the suite had **86 tests in 9 spec files**.
 
 Start here if you are not sure which file to open.
 
@@ -26,12 +26,12 @@ and `TEST_RECOMMENDATIONS.md` tracks what is missing from them.
 
 | File | Tests | Covers |
 |---|---|---|
-| `articles.spec.ts` | 30 | The biggest one. Public list and filters, pagination boundaries, auth protection, cross-user 403s, create / update / favourite / feed / delete, 422 validation, special characters. Holds one of the two expected failures |
+| `articles.spec.ts` | 32 | The biggest one. Public list and filters, pagination boundaries, auth protection, cross-user 403s, create / update / favourite / feed / delete, 422 validation, special characters. Holds two of the four expected failures |
 | `auth.spec.ts` | 11 | Register, login, get and update the current user, 401 without a token, 401 with a broken token |
 | `schema.spec.ts` | 9 | Runtime response-shape checks with zod, for articles, tags, profiles, users and comments |
-| `comments.spec.ts` | 7 | List, add, delete, 401 without auth, 422 on an empty body |
-| `profiles.spec.ts` | 6 | Get a profile, 404 for unknown, follow and unfollow, 401 without a token |
-| `error-response.spec.ts` | 7 | Error body shape, and checks that errors do not leak stack traces or database internals. Holds the one expected failure — a known server bug |
+| `comments.spec.ts` | 9 | List, add, delete, 401 without auth, 422 on an empty body, a cross-user delete, and the 500 on an unknown slug |
+| `profiles.spec.ts` | 9 | Get a profile, 404 for unknown, follow and unfollow, 401 without a token, self-following, the 500 on an unknown username, and the unfollow no-op |
+| `error-response.spec.ts` | 8 | Error body shape, and checks that errors do not leak stack traces or database internals. Holds two expected failures — both known server bugs |
 | `performance.spec.ts` | 5 | Response times on five endpoints, all under one 2000ms threshold |
 | `tags.spec.ts` | 2 | Tag list shape and filtering articles by tag |
 | `e2e-flow.spec.ts` | 1 | One long realistic journey: register → follow → create → **comment → update** → verify both → delete comment → unfollow → delete article. The comment is added *before* the update on purpose — the test checks it survives one |
@@ -42,7 +42,9 @@ failing — which means passing — the day the server is fixed. That is deliber
 | Spec | Bug |
 |---|---|
 | `error-response.spec.ts` | `GET /api/articles?limit=1.5` and `?offset=1.5` return 500 with raw Prisma internals. Pointed at `offset=-1` until 2026-10-17, when the server fixed that one |
+| `error-response.spec.ts` | Following or unfollowing an unknown username, and commenting on an unknown slug, all return 500 leaking the same Prisma internals |
 | `articles.spec.ts` | `GET /api/articles?limit=0` returns the full default page instead of an empty one |
+| `articles.spec.ts` | Favouriting the same article twice as the same user counts twice — one account can inflate `favoritesCount` without limit |
 
 ## 2. The code the tests use — `support/`
 
