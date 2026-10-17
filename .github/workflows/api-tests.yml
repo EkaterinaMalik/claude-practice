@@ -37,10 +37,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: npm
@@ -66,8 +66,11 @@ jobs:
       # v3 is the first on node24. The inputs passed below are unchanged across the bump,
       # and `java-junit` is still the reporter Playwright's JUnit output needs.
       - name: Publish test report
-        uses: dorny/test-reporter@v3
-        if: always()
+        uses: dorny/test-reporter@d1b5dff021aa968b288b02285a8bf47471c5928a # v3.2.0
+        # !cancelled() rather than always(): cancel-in-progress above means a second
+        # push cancels this run mid-suite, and on a cancelled run there is no complete
+        # report to publish or upload. Still runs when an earlier step FAILED.
+        if: ${{ !cancelled() }}
         with:
           name: Playwright Test Results
           path: junit-results/results.xml
@@ -75,7 +78,7 @@ jobs:
           fail-on-error: false
           # The suite step already decided the job, so this one never should. Without
           # this, a Typecheck failure skips the suite, leaves no results.xml behind, and
-          # this step - which runs on `always()` - fails a second time with "No test
+          # this step - which runs even then - fails a second time with "No test
           # report files were found". Two red steps, and the second one misleading.
           fail-on-empty: false
           # Load-bearing. `use-actions-summary` defaults to 'true', and on that path the
@@ -88,16 +91,16 @@ jobs:
           use-actions-summary: false
 
       - name: Upload Playwright HTML report
-        if: always()
-        uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
 
       - name: Upload Allure results
-        if: always()
-        uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: allure-results
           path: allure-results/

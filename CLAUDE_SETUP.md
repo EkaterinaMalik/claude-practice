@@ -96,15 +96,26 @@ The same rules as the commands, written to be portable.
 
 `SKILL.md` always loads; a reference is read only when that task comes up.
 
-**It lives in the repo and is symlinked into the home directory:**
+**Both directories live in the repo and are symlinked into the home directory:**
 
 ```
+~/.claude/commands                    -> <repo>/.claude/commands
 ~/.claude/skills/playwright-api-tests -> <repo>/.claude/skills/playwright-api-tests
 ```
 
-So it loads in every project, while git versions it, CI checks it, and a clone brings it along.
-Kept only under `~/.claude/` it would be none of those things. If you clone this repo elsewhere,
-recreate the symlink by hand — it is the one piece that does not travel.
+So they load in every project, while git versions them, CI checks them, and a clone brings them
+along. Kept only under `~/.claude/` they would be none of those things — and the commands were
+literally two byte-identical copies with nothing keeping them in step, where fixing one left the
+other wrong and which one won depended on where you launched Claude. Replaced with a link on
+2026-10-17.
+
+If you clone this repo elsewhere, recreate both links by hand — they are the one piece that does
+not travel:
+
+```bash
+ln -s "$PWD/.claude/commands" ~/.claude/commands
+ln -s "$PWD/.claude/skills/playwright-api-tests" ~/.claude/skills/playwright-api-tests
+```
 
 Both directories are covered by `npm run check:commands`.
 
