@@ -1,5 +1,6 @@
 import { test, expect, APIRequestContext } from '@playwright/test';
 import { ArticlesApi } from '../support/api/ArticlesApi';
+import { AuthApi } from '../support/api/AuthApi';
 import { CommentsApi } from '../support/api/CommentsApi';
 import { createAuthContext, uniqueId, cleanup } from '../support/helpers';
 import { ErrorSchema } from '../support/schemas';
@@ -37,9 +38,10 @@ test.describe('Error responses — Shape and safety', () => {
   // --- Error shape: { errors: { field: string[] } } ---
 
   test('POST /api/users — 422 body matches ErrorSchema', async ({ request }) => {
-    const response = await request.post('/api/users', {
-      data: { user: { username: '', email: '', password: '' } },
-    });
+    // Raw, because register() would assert the 201 and fail before the 422 below.
+    // Empty strings are a valid RegisterInput — the server rejects them, not the compiler.
+    const response = await new AuthApi(request).registerRaw({ username: '', email: '', password: '' });
+
     expect(response.status()).toBe(422);
     ErrorSchema.parse(await response.json());
   });
@@ -63,9 +65,8 @@ test.describe('Error responses — Shape and safety', () => {
   // --- No internal data leak on 422 responses ---
 
   test('POST /api/users — 422 response does not expose stack trace or internals', async ({ request }) => {
-    const response = await request.post('/api/users', {
-      data: { user: { username: '', email: '', password: '' } },
-    });
+    const response = await new AuthApi(request).registerRaw({ username: '', email: '', password: '' });
+
     const text = await response.text();
     for (const pattern of LEAK_PATTERNS) {
       expect(text, `Response must not contain "${pattern}"`).not.toContain(pattern);

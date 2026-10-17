@@ -52,7 +52,7 @@ test.describe('Authentication', () => {
     expect((await response.json()).errors).toBeDefined();
   });
 
-  // Remaining Work item 4. The test above sends empty strings. Omitting a key is a different
+  // The test above sends empty strings. Omitting a key is a different
   // code path: the value arrives as undefined rather than '', and a server can easily treat the
   // two differently. Probed 2026-10-11 — this one does not, and names each missing field.
   test('POST /api/users — returns 422 and names the field when a required key is omitted', async () => {
@@ -76,7 +76,7 @@ test.describe('Authentication', () => {
     }
   });
 
-  // Remaining Work item 1. The RealWorld spec says `Authorization: Token <jwt>`. This server also
+  // The RealWorld spec says `Authorization: Token <jwt>`. This server also
   // accepts `Bearer`, so the test pins the leniency — asserting 401 here would fail. Probed
   // 2026-10-11 on a read and a write. The scheme is case-sensitive: `token` and `bearer` give 401.
   test('Authorization header — accepts Token and Bearer, and is case-sensitive', async ({ playwright }) => {

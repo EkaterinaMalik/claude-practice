@@ -527,7 +527,7 @@ test.describe('Articles — Authenticated endpoints', () => {
     });
   });
 
-  // Remaining Work item 2. The two tests above cover `title` only. Probed 2026-10-11: all four
+  // The two tests above cover `title` only. Probed 2026-10-11: all four
   // payloads are stored verbatim in `description` and `body` as well. The re-fetch matters — it
   // proves the value was stored, not merely echoed back by the create response.
   test('POST /api/articles — stores special characters in description and body without mangling', async () => {
