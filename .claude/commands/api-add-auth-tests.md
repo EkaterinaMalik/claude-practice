@@ -1,55 +1,78 @@
 # Add Auth Edge Case Tests
 
-Generate the full set of authentication edge case tests for the specified endpoint(s).
+Generate the authentication edge cases for an endpoint.
 
 ## Usage
 `/api-add-auth-tests <endpoint>` — e.g. `/api-add-auth-tests POST /api/articles`
 
-If no endpoint is given, review all write endpoints in the current suite and add missing auth tests for each.
+If no endpoint is given, review every write endpoint and add what is missing.
 
-## Tests to generate for each endpoint
+## Tests to generate
 
-1. **Missing token → 401** — call the endpoint with no `Authorization` header (use the unauthenticated `request` fixture, not an auth context).
-2. **Malformed token → 401** — call with `Authorization: Token not-a-real-token`. Create a bare `playwright.request.newContext` with that header manually.
-3. **Cross-user access → 403** (for endpoints that operate on a specific resource, e.g. PUT/DELETE on an article) — create two independent auth contexts (`ownerCtx` and `otherCtx`), owner creates the resource, other user attempts the operation.
+1. **No token → 401** — call through the plain `request` fixture, which carries no `Authorization` header.
+2. **Malformed token → 401** — build a bare context with a broken header. Cover the shapes separately: garbage after the scheme, a scheme with no token, a token with no scheme, a truncated JWT.
+3. **Cross-user access → 403** — for endpoints acting on a specific resource (PUT/DELETE on an article). Two independent contexts: the owner creates it, the other user attempts the operation.
 
-## Placement
+## Use the Raw method
 
-Add tests to an `Auth protection` describe block in the relevant spec file. Each test must be fully independent: create any needed resources inside the test and clean up afterward. Log cleanup errors instead of swallowing them silently — see the pattern reference.
-
-The missing-token test is a single call + assert — leave it flat, no `test.step` needed. The cross-user 403 test has three distinct phases (owner setup, attacker attempt, cleanup) — wrap each in `test.step`, and keep the full created resource object in an outer-scope variable (e.g. `let article: Article`) rather than narrowing to just the slug.
-
-## Pattern reference
+A wrapper asserts the status that endpoint really returns, so `createArticle()` fails the test on the 401 you came to assert. Raw returns the `APIResponse` untouched:
 
 ```typescript
 test('POST /api/articles — returns 401 without token', async ({ request }) => {
-  const { status } = await new ArticlesApi(request).create({ ... });
-  expect(status).toBe(401);
+  const response = await new ArticlesApi(request).createArticleRaw({ title, description, body });
+  expect(response.status()).toBe(401);
 });
+```
 
-test('PUT /api/articles/:slug — returns 403 when editing another user\'s article', async ({ playwright }) => {
+## Know what this server actually does before asserting
+
+Probed 2026-10-11 against the live API:
+
+- **`Bearer` is accepted as well as `Token`.** The RealWorld spec says `Token <jwt>`, but `Bearer <jwt>` returns 200 on `GET /api/user` and 201 on `POST /api/articles`. **A test asserting 401 for `Bearer` will fail.** Pin the leniency instead.
+- **The scheme is case-sensitive.** `token` and `bearer` both give 401. That is worth a test.
+- All four malformed shapes give 401 on a write endpoint.
+
+Probe first. Do not generate a test from the spec and assume this server follows it.
+
+## Cross-user test — the shape
+
+```typescript
+test('PUT /api/articles/:slug — returns 403 when editing another user\'s article', async () => {
   let ownerCtx: APIRequestContext;
   let otherCtx: APIRequestContext;
   let article: Article;
 
   await test.step('Owner registers and creates an article', async () => {
-    ownerCtx = await createAuthContext(playwright);
-    const { article: created } = await new ArticlesApi(ownerCtx).create({ ... });
-    article = created;
+    ownerCtx = await createAuthContext();          // no arguments
+    article = await new ArticlesApi(ownerCtx).createArticle({ title, description, body });
   });
 
-  await test.step('Second user registers and attempts to edit the article', async () => {
-    otherCtx = await createAuthContext(playwright);
-    const { status } = await new ArticlesApi(otherCtx).update(article.slug, { title: 'hijacked' });
-    expect(status).toBe(403);
+  await test.step('Second user attempts to edit it', async () => {
+    otherCtx = await createAuthContext();
+    const response = await new ArticlesApi(otherCtx).updateRaw(article.slug, { title: 'hijacked' });
+    expect(response.status()).toBe(403);
   });
 
-  await test.step('Cleanup: delete article and dispose contexts', async () => {
-    await new ArticlesApi(ownerCtx).delete(article.slug).catch((error) => {
-      console.warn('Cleanup failed:', error);
-    });
+  await test.step('Cleanup: delete the article and dispose both contexts', async () => {
+    await cleanup(`article ${article.slug}`, () => new ArticlesApi(ownerCtx).deleteRaw(article.slug));
     await ownerCtx.dispose();
     await otherCtx.dispose();
   });
 });
 ```
+
+Keep the whole `Article` in the outer variable, not just the slug — a later step or a later edit will want another field.
+
+## Cleanup must be able to fail
+
+Use `cleanup()` from `support/helpers.ts`, and **pass it the Raw method**.
+
+**Do not use `.catch()`.** A Raw method never throws on a non-2xx response, because Playwright's `failOnStatusCode` defaults to `false`. A 403 or 404 resolves normally, so `.catch` never runs and a cleanup that did nothing looks identical to a healthy one. Verified against the live server: a cross-user delete returned 403, the old pattern logged nothing, and the article was still there.
+
+Pass the Raw method and not the wrapper: `delete()` asserts its own 204, which would turn a failed cleanup into a failed test — the exact thing `cleanup()` exists to prevent.
+
+## Placement
+
+An `Auth protection` describe block in the relevant spec. Each test creates its own data and cleans up after itself, so it is safe under `fullyParallel: true`.
+
+The no-token test is one call and one assert — leave it flat. The cross-user test has three phases — use `test.step` for each.

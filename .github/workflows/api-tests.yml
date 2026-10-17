@@ -46,6 +46,12 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # The five files in .claude/commands/ generate tests, so they contain code
+      # that nothing compiles. All five went stale through the Raw/wrapper refactor
+      # before anyone noticed. This fails the build instead.
+      - name: Check .claude/commands/ matches the API
+        run: npm run check:commands
+
       - name: Run Playwright tests
         run: npx playwright test
 
