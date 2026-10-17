@@ -51,7 +51,7 @@ The workflow only needs to read the repo checkout; no write access to contents, 
 ### 5. Configure the job environment
 
 ```yaml
-runs-on: ubuntu-latest
+runs-on: ubuntu-24.04
 timeout-minutes: 15
 env:
   API_BASE_URL: ${{ vars.API_BASE_URL }}
@@ -60,6 +60,17 @@ env:
   TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
   TEST_NEW_PASSWORD: ${{ secrets.TEST_NEW_PASSWORD }}
 ```
+
+**Why `ubuntu-24.04` and not `ubuntu-latest`.** GitHub migrates the `ubuntu-latest` label to
+Ubuntu 26 gradually, between 2026-10-19 and 2026-11-19. During that window two runs of the *same
+commit* can land on different images, with a different kernel and network stack. `performance.spec.ts`
+asserts five 2000 ms thresholds, so a borderline timing could flip and be indistinguishable from a
+real API regression. `24.04` is what `ubuntu-latest` resolved to before the rollout, so the pin
+changes nothing today.
+
+**The pin is temporary and must be removed.** A pinned image is eventually retired, and the job
+then warns and later fails. Revisit after 2026-11-19 — drop the pin, or move to `ubuntu-26.04` and
+re-measure the thresholds on purpose. It is the one open item in `TEST_RECOMMENDATIONS.md`.
 
 These mirror the local `.env` file (see `.env.example`), but the values live on GitHub rather than in
 this file. They are split by kind:
