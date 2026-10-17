@@ -1,8 +1,8 @@
 # API Test Coverage Recommendations
 ### Based on: *8 API Testing Mistakes That Keep QA Engineers at Junior Level* — Aston Cook
 
-**Suite state when last audited:** 2026-10-17 — 86 tests across 9 spec files. A full run reports
-86 passed. **Four** of those are expected `test.fail()` markers tracking known server bugs, so the
+**Suite state when last audited:** 2026-10-17 — 93 tests across 9 spec files. A full run reports
+93 passed. **Four** of those are expected `test.fail()` markers tracking known server bugs, so the
 runner counts them as passing while they keep failing:
 
 | Bug | Tracked in |
@@ -252,6 +252,27 @@ unrelated items before this was fixed.
 Re-checked against the live API on 2026-10-17.
 
 **Done since the last audit:**
+
+- **Seven validation tests from the same probe, 2026-10-17.** The first group covered behaviours;
+  this one covers the rules the server enforces on input:
+  - **Duplicate username or email → 422, naming the field that clashes.** The test also asserts the
+    *free* field is NOT reported, since a message naming both would send the user to change the
+    wrong one.
+  - **The 20-character username limit.** `CLAUDE.md` recorded it and `uniqueId()` is sized to fit
+    it, but nothing tested the limit itself — so if the server moved it, the constraint the helper
+    is built around would have gone stale silently. The test pins both sides: 21 characters is
+    rejected with the limit stated in the message, and exactly 20 still works.
+  - **A malformed email → 422** naming the field.
+  - **A wrong password and an unknown email are indistinguishable** — same 403, same body. This is
+    user-enumeration protection, so the test *compares the two responses* rather than asserting 403
+    on each; the latter would still pass if one later started saying "email not found".
+  - **An empty password → 422** naming the field. A different path: it fails validation before
+    credentials are checked, so it does not get the combined "email or password" message.
+  - **`PUT /api/user` with a taken email → 422**, enforced through an UPDATE rather than an INSERT.
+    The test also re-fetches to prove the rejected value was not written anyway.
+  - **A duplicate article title → 422.** Worth knowing because the RealWorld reference
+    implementation does the opposite and appends a suffix. This is why every title in the suite
+    carries `uniqueId()`.
 
 - **Eight tests from a coverage probe on 2026-10-17.** Every endpoint was already hit, so the gaps
   were behaviours rather than endpoints, and each was probed against the live API before a line was

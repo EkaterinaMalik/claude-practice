@@ -613,6 +613,42 @@ test.describe('Articles — Authenticated endpoints', () => {
     expect((await response.json()).errors?.body).toBeDefined();
   });
 
+  // Probed 2026-10-17. Worth knowing because the RealWorld reference implementation does the
+  // opposite - it appends a suffix and creates a second article. Here the second create is
+  // rejected outright, so any test that creates articles must use a unique title. That is why
+  // every title in this suite carries uniqueId().
+  test('POST /api/articles — rejects a second article with the same title', async () => {
+    const title = `PW Dup ${uniqueId()}`;
+    let created: Article;
+
+    await test.step('Create the first article', async () => {
+      created = await api.createArticle({
+        title,
+        description: 'First with this title',
+        body: 'First body.',
+        tagList: [],
+      });
+      expect(created.slug).toBeTruthy();
+    });
+
+    await test.step('The same title a second time is rejected', async () => {
+      const response = await api.createArticleRaw({
+        title,
+        description: 'Second with this title',
+        body: 'Second body.',
+        tagList: [],
+      });
+
+      expect(response.status(), 'a duplicate title must not be accepted').toBe(422);
+      expect((await response.json()).errors?.title, 'the response should name the title field')
+        .toBeDefined();
+    });
+
+    await test.step('Cleanup: delete the article', async () => {
+      await cleanup(`article ${created.slug}`, () => api.deleteRaw(created.slug));
+    });
+  });
+
   test('POST /api/articles — stores special characters in title without mangling', async () => {
     const title = '<script>alert(1)</script>';
     let article: Article;

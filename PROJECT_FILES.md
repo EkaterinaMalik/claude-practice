@@ -1,6 +1,6 @@
 # Every file in this project, and what it is for
 
-A complete map. Written 2026-09-19, last re-counted 2026-10-17, when the suite had **86 tests in 9 spec files**.
+A complete map. Written 2026-09-19, last re-counted 2026-10-17, when the suite had **93 tests in 9 spec files**.
 
 Start here if you are not sure which file to open.
 
@@ -26,8 +26,8 @@ and `TEST_RECOMMENDATIONS.md` tracks what is missing from them.
 
 | File | Tests | Covers |
 |---|---|---|
-| `articles.spec.ts` | 32 | The biggest one. Public list and filters, pagination boundaries, auth protection, cross-user 403s, create / update / favourite / feed / delete, 422 validation, special characters. Holds two of the four expected failures |
-| `auth.spec.ts` | 11 | Register, login, get and update the current user, 401 without a token, 401 with a broken token |
+| `articles.spec.ts` | 33 | The biggest one. Public list and filters, pagination boundaries, auth protection, cross-user 403s, create / update / favourite / feed / delete, 422 validation, special characters. Holds two of the four expected failures |
+| `auth.spec.ts` | 17 | Register, login, get and update the current user, 401 without a token, 401 with a broken token, and the uniqueness/format rules: duplicate username or email, the 20-character username limit, a malformed email, and that a wrong password is indistinguishable from an unknown one |
 | `schema.spec.ts` | 9 | Runtime response-shape checks with zod, for articles, tags, profiles, users and comments |
 | `comments.spec.ts` | 9 | List, add, delete, 401 without auth, 422 on an empty body, a cross-user delete, and the 500 on an unknown slug |
 | `profiles.spec.ts` | 9 | Get a profile, 404 for unknown, follow and unfollow, 401 without a token, self-following, the 500 on an unknown username, and the unfollow no-op |
