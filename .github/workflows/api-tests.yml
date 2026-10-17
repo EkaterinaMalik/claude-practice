@@ -50,7 +50,7 @@ jobs:
         run: npx playwright test
 
       # dorny/test-reporter: v1 and v2 both run on node20, which GitHub has deprecated;
-      # v3 is the first on node24. The four inputs below are unchanged across the bump,
+      # v3 is the first on node24. The inputs passed below are unchanged across the bump,
       # and `java-junit` is still the reporter Playwright's JUnit output needs.
       - name: Publish test report
         uses: dorny/test-reporter@v3
@@ -60,6 +60,14 @@ jobs:
           path: junit-results/results.xml
           reporter: java-junit
           fail-on-error: false
+          # Load-bearing. `use-actions-summary` defaults to 'true', and on that path the
+          # action writes the report to the job summary and never calls checks.create -
+          # so no "Playwright Test Results" check run appears on the commit or PR, failing
+          # tests get no inline file annotations, and `checks: write` above is dead config.
+          # The default is 'true' in the v1 tag as well, so this was never working; the
+          # v3 bump did not cause it. Verified against the check-runs API on v1 and v3
+          # commits alike: only the job's own `test` check was ever created.
+          use-actions-summary: false
 
       - name: Upload Playwright HTML report
         if: always()
