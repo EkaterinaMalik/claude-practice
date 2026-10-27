@@ -2,70 +2,82 @@
 
 [![API Tests](https://github.com/EkaterinaMalik/claude-practice/actions/workflows/api-tests.yml/badge.svg)](https://github.com/EkaterinaMalik/claude-practice/actions/workflows/api-tests.yml)
 
-**The hard part is the target.** The API under test is live, public and shared. There is no database to reset. There is no fixture to seed. Anything a test creates is visible to the rest of the suite.
+**93 API tests against a live, shared, public server — run in parallel, in any order.**
 
-So no test depends on another. A spec file registers one throwaway user and shares it for read-only work. Any test that changes user state registers its own. Each test removes what it made, and says so when removal fails. That is what makes **78 tests safe to run at once, in any order**.
+Playwright and TypeScript. No browser is launched, so no browser binaries are downloaded.
 
-Playwright and TypeScript. A full run takes about 15 seconds. No browser is launched, so no browser binaries are downloaded.
 
 Design decisions worth a look:
 
 - **Independence is enforced, not hoped for.** Users are throwaway and never reused across spec files. Nothing depends on order. `fullyParallel` is on.
-- **Types are checked twice.** TypeScript checks the code before it runs. zod checks the server's real answer while it runs.
+- **Types are checked twice.** TypeScript checks the code before it runs. Zod checks the server's real answer while it runs.
 - **Failures name their own cause.** A failed cleanup is reported, never swallowed. A missing environment variable says which one. A known server bug is pinned with `test.fail()`, so it turns red the day the server is fixed.
 - **Reporting and CI are part of the suite.** Four reporters from one run. GitHub Actions publishes a check run on every push and pull request.
 - **Docker removes prerequisites.** One image renders the Allure report, so reading it needs no Java. Another runs the suite, so a machine needs no Node.
-- **Server quirks are written down.** This server has real oddities. Each one sits next to the test that pins it.
 
-The system under test is [Conduit](https://conduit-api.bondaracademy.com), the RealWorld reference backend: articles, comments, profiles, auth.
 
-## Quick start
+## The interesting part is the target
 
-```bash
-git clone git@github.com:EkaterinaMalik/claude-practice.git
-cd claude-practice
-npm ci
-cp .env.example .env     # the defaults work as-is; .env is gitignored
-npm test
-```
+The API under test is [Conduit](https://conduit-api.bondaracademy.com), the RealWorld reference backend — articles, comments, profiles, auth. It is a public demo server that anyone can write to. There is no database to reset between runs, and no fixtures to seed.
 
-Node 22 is expected. If a variable is missing, the suite stops at once and names it. No confusing `Invalid URL` later.
+Every test creates test data, cleans up after itself, and reads nothing another test created.
+
+All tests run independently of each other. One throwaway user is registered per spec file and shared for read-only work. Any test that changes user state registers its own. Each test cleans up the data it created, and reports it when removal fails — a cleanup problem is never allowed to mask the real test result.
+
+## What I was actually trying to get right
+
+**Tests that can fail.** The easiest mistake in API testing is a test that stays green whatever the
+server does — a loop over an empty list, an assertion on a response that merely echoed your input.
+Five of those were found in this suite and fixed. Every loop now asserts it had something to loop
+over.
+
+**Bugs tracked, not hidden.** Where the server is genuinely wrong, the test records the correct behaviour and is marked as expected-to-fail. It turns red the day the server is fixed. That has already happened once: a crash on a negative offset was repaired upstream without announcement,
+and the next CI run reported it.
+
+**Failures that explain themselves.** A missing environment variable names itself instead of
+surfacing as a confusing URL error three layers down. A cleanup that fails says so instead of
+leaving silent litter. An unexpected status prints the server's own words alongside it.
+
+**Findings written down.** The server has real quirks — it accepts an auth scheme the spec does not mention, it ignores a page size of zero, it rejects a duplicate article title. Each one is recorded next to the test that pins it, so nobody has to discover it twice.
 
 ## What is covered
 
 | Spec | Tests | Covers |
 |---|---|---|
-| `articles.spec.ts` | 26 | CRUD, pagination, tag filter, favorites, feed, auth protection, boundary values, special characters |
-| `auth.spec.ts` | 9 | Register, login, current user, update user, token rejection |
+| `articles.spec.ts` | 33 | CRUD, pagination, tag filter, favorites, feed, auth protection, boundary values, special characters |
+| `auth.spec.ts` | 17 | Register, login, current user, token handling, update user, token rejection |
 | `schema.spec.ts` | 9 | Zod validation of every response shape |
-| `comments.spec.ts` | 7 | List, add, delete, validation |
-| `error-response.spec.ts` | 6 | Error body structure, no internals leaked |
-| `profiles.spec.ts` | 6 | Fetch, follow, unfollow |
+| `comments.spec.ts` | 9 | List, add, delete, validation |
+| `error-response.spec.ts` | 8 | Error body structure, no internals leaked |
+| `profiles.spec.ts` | 9 | Fetch, follow, unfollow |
 | `performance.spec.ts` | 5 | Response-time ceilings |
-| `tags.spec.ts` | 3 | Tag list and tag filtering |
-| `e2e-flow.spec.ts` | 1 | One full social flow, register through cleanup |
+| `tags.spec.ts` | 2 | Tag list and tag filtering |
+| `e2e-flow.spec.ts` | 1 | One end-to-end social flow, register through cleanup |
 
-No test reads data made by another. Every run registers throwaway users as it goes: one shared per spec file where tests only read, plus a dedicated one for every test that changes user state. The exact number moves with the suite, so it is deliberately not quoted here — it was wrong for a month after the count stopped being 72.
+No test reads data made by another. Every run registers throwaway users as it goes: one shared per spec file where tests only read, plus a dedicated one for every test that changes user state.
 
-## Running
+## Try it
 
 ```bash
-npm test                          # everything
-npm run test:auth                 # one spec (also :articles, :comments, :tags, :profiles)
-npx playwright test -g "favorite" # one test by name
-
-npm run test:docker               # run the suite in a container, no local Node needed
+git clone git@github.com:EkaterinaMalik/claude-practice.git
+cd claude-practice
+npm ci
+cp .env.example .env    # the defaults work as-is; .env is gitignored
+npm test
 ```
+
+Node 22. No browser binaries are downloaded — these are pure API tests. If you would rather not install anything, `npm run test:docker` runs the whole suite in a container.
 
 ## Reports
 
-Four reporters write from a single run: console, Playwright HTML, Allure, and JUnit XML for CI.
+One run produces four reports: the console, Playwright's HTML report, Allure, and JUnit XML for CI.
 
 ```bash
-npm run report                    # Playwright's own HTML report
-npm run allure:serve              # Allure report — needs Java and the Allure CLI locally
-npm run allure:docker             # same report from a container, no Java needed → localhost:5252
+npm run report          # Playwright's HTML report
+npm run allure:docker   # Allure at localhost:5252, no Java needed
 ```
+
+GitHub Actions runs everything on each push and pull request, and publishes the results as a check on the commit.
 
 A `pretest` hook clears `allure-results/` before each `npm test`. So a report never mixes two runs.
 
@@ -119,7 +131,7 @@ It is a public demo server with real quirks. The tests document them rather than
 
 - Anonymous reads only ever return the pre-seeded data. Authenticate whenever a test needs to see its own writes. Otherwise a loop can run zero times and pass while checking nothing.
 - Login returns **403**, not 422, for wrong credentials.
-- `GET /api/articles?offset=-1` returns a 500 with raw internals. A `test.fail()` test tracks it. The day the server is fixed, that test starts failing — correctly.
+- `GET /api/articles?limit=1.5` returns a 500 with raw internals. A `test.fail()` test tracks it. The day the server is fixed, that test starts failing — correctly. The same used to be true of `offset=-1`, until the server fixed it and the suite said so.
 - Usernames are capped at 20 characters.
 
 Full list in [CLAUDE.md](CLAUDE.md).
@@ -128,8 +140,8 @@ Full list in [CLAUDE.md](CLAUDE.md).
 
 | File | What it holds |
 |---|---|
-| [CLAUDE.md](CLAUDE.md) | Commands, architecture, testing rules, server quirks |
-| [PROJECT_FILES.md](PROJECT_FILES.md) | File-by-file map of the repo |
-| [CI_SETUP.md](CI_SETUP.md) | How the GitHub Actions workflow was built, step by step |
-| [TEST_RECOMMENDATIONS.md](TEST_RECOMMENDATIONS.md) | Coverage audit and remaining gaps |
-| [CLAUDE_SETUP.md](CLAUDE_SETUP.md) | How Claude Code is configured for this repo |
+| [CLAUDE.md](CLAUDE.md) | Architecture, testing rules, and everything learned about the live API |
+| [TEST_RECOMMENDATIONS.md](TEST_RECOMMENDATIONS.md) | Coverage audit against a well-known list of API testing mistakes |
+| [CI_SETUP.md](CI_SETUP.md) | How the pipeline was built, and why each choice was made |
+| [PROJECT_FILES.md](PROJECT_FILES.md) | A map of every file in the repo |
+| [CLAUDE_SETUP.md](CLAUDE_SETUP.md) | How Claude Code is configured here |
